@@ -44,7 +44,8 @@ When adding a new capability:
 
 - Update `docs/technical-design-plan.md`
 - Update `README.md` if operator behavior changed
-- Update `docs/operations-runbook.md` for incident handling
+- Update `docs/deployment-and-operations.md` for setup/deploy/runtime command changes
+- Update `docs/operations-runbook.md` for incident handling and recovery updates
 - Add Heredoc examples in `docs/heredoc-api-sourcecode.md` when payload snippets are multi-line
 
 ### 5) Profile extension

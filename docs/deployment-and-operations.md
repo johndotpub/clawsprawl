@@ -1,8 +1,9 @@
 # Deployment and Operations
 
-This page centralizes environment configuration, run commands, and deployment modes.
+This page is the canonical source for environment configuration, run commands, deployment modes, and release automation.
 
-For incident playbooks, see [`operations-runbook.md`](operations-runbook.md).
+For incident playbooks and recovery procedures, see [`operations-runbook.md`](operations-runbook.md).
+For architecture diagrams and request flow, see [`architecture-overview.md`](architecture-overview.md).
 
 ## Local Development
 
