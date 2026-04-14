@@ -38,7 +38,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref_name, 'v') }}
 
       - name: Build and push container image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
