@@ -4,6 +4,21 @@ This directory contains operational, architectural, and extension documentation 
 
 Last reviewed for release baseline: `v0.42.0`.
 
+## Start Here
+
+- Repository homepage and setup: [`../README.md`](../README.md)
+- Full docs hub: [`./`](./)
+- Screenshot gallery: [`screenshots/README.md`](screenshots/README.md)
+
+## What Goes Where
+
+- `README.md` (repo root): quickstart, architecture overview, deploy modes, and links to deeper docs.
+- `docs/technical-design-plan.md`: design intent, architecture decisions, and roadmap-level changes.
+- `docs/operations-runbook.md`: incident response, operational checks, health endpoints, and recovery flow.
+- `docs/heredoc-api-sourcecode.md`: executable heredoc examples and API/sourcecode doc conventions.
+- `docs/extensions.md`: extension interfaces, implementation checklist, and extension safety rules.
+- `CHANGELOG.md` and `VERSIONING.md`: release history and version policy.
+
 ## Core Documents
 
 - `technical-design-plan.md` — living architecture spec, active roadmap checklist, and deferred parking lot.
@@ -26,6 +41,12 @@ Last reviewed for release baseline: `v0.42.0`.
 
 - `screenshots/` — Playwright-captured documentation images.
   - Includes both public locked and private unlocked dashboard captures.
+
+Preview snapshots:
+
+![Public locked dashboard](screenshots/main-overview-desktop-public-locked.png)
+
+![Private unlocked dashboard](screenshots/main-overview-desktop-private-unlocked.png)
 
 ## Suggested Reading Order
 

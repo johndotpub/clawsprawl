@@ -20,15 +20,15 @@ ClawSprawl is the Astro-based operations surface for autonomous agent swarms. It
 
 Default indexing posture: pages are shipped with `noindex, nofollow` meta robots tags because ClawSprawl is an internal operations surface by default.
 
-## Docs Index
+## Documentation Hub
 
-- `docs/README.md`
-- `docs/technical-design-plan.md`
-- `docs/operations-runbook.md`
-- `docs/heredoc-api-sourcecode.md`
-- `docs/extensions.md`
-- `SECURITY.md`
-- `CHANGELOG.md`
+Start with the docs directory index: [`docs/README.md`](docs/README.md)
+
+- Architecture and roadmap: [`docs/technical-design-plan.md`](docs/technical-design-plan.md)
+- Runtime operations: [`docs/operations-runbook.md`](docs/operations-runbook.md)
+- Heredoc API/source docs: [`docs/heredoc-api-sourcecode.md`](docs/heredoc-api-sourcecode.md)
+- Extension guide: [`docs/extensions.md`](docs/extensions.md)
+- Release and policy docs: [`CHANGELOG.md`](CHANGELOG.md), [`VERSIONING.md`](VERSIONING.md), [`SECURITY.md`](SECURITY.md)
 
 ## System Flow 🧠
 
@@ -229,6 +229,18 @@ The live dashboard includes:
 - private preview grid with locked titles and reasons before auth
 - private realtime cards and raw activity feed only after unlock
 
+### Dashboard States
+
+Public dashboard with private cards locked (default):
+
+![Public dashboard with private preview locked](docs/screenshots/main-overview-desktop-public-locked.png)
+
+Private dashboard unlocked after token bootstrap:
+
+![Private dashboard unlocked view](docs/screenshots/main-overview-desktop-private-unlocked.png)
+
+More captures (mobile + live ops panels): [`docs/screenshots/README.md`](docs/screenshots/README.md)
+
 ## Profile Configuration 🧬
 
 Landing identity and branding chrome are profile-driven. All operational data (agents, providers, cron, sessions) comes from the live gateway — profiles contain no static operational data.
@@ -322,26 +334,6 @@ npm run start
 ```
 
 For Tailscale exposure, map your internal hostname/path to the local SSR server, then keep gateway WS origin allowlist aligned with the serving origin.
-
-## Plan Document
-
-Architecture and phase details live in `docs/technical-design-plan.md`.
-
-## Operations Runbook
-
-Operational procedures live in `docs/operations-runbook.md`.
-
-## API and Sourcecode Documentation
-
-Heredoc-based API/sourcecode documentation lives in `docs/heredoc-api-sourcecode.md`.
-
-## Extension Guide
-
-Extension patterns and checklists live in `docs/extensions.md`.
-
-## Docs Index
-
-Directory-level documentation index lives in `docs/README.md`.
 
 ## Release and Versioning 🏷️
 
