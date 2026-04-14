@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+@theme {
+  --color-terminal-bg: #0a0a0a;
+  --color-terminal-surface: #111111;
+  --color-terminal-surface-2: #151515;
+  --color-terminal-border: #2a2a2a;
+  --color-terminal-text: #e6e6e6;
+  --color-terminal-muted: #9a9a9a;
+  --color-terminal-green: #00ff41;
+  --color-terminal-amber: #ffb000;
+  --color-terminal-cyan: #00d4ff;
+  --color-terminal-error: #ff4d4f;
+  /* font-sans and font-mono are intentionally identical — the terminal
+     theme renders all UI text in JetBrains Mono for a monospace-first
+     aesthetic. Tailwind's prose and utility classes reference both tokens,
+     so we keep them in sync to avoid accidental font switches. */
+  --font-sans: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+html,
+body {
+  color-scheme: dark;
+  background: radial-gradient(circle at 20% -10%, rgb(0 212 255 / 8%), transparent 45%),
+    radial-gradient(circle at 100% 0%, rgb(0 255 65 / 7%), transparent 40%), var(--color-terminal-bg);
+  color: var(--color-terminal-text);
+  font-family: var(--font-sans);
+}
+
+.scanlines {
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(255 255 255 / 2.2%) 2px 3px);
+  opacity: 0.2;
+}
+
+.terminal-panel {
+  border: 1px solid var(--color-terminal-border);
+  background: linear-gradient(180deg, rgb(17 17 17 / 95%), rgb(13 13 13 / 95%));
+  border-radius: 0.75rem;
+  padding: 1rem;
+  min-width: 0;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%), 0 10px 24px rgb(0 0 0 / 28%);
+}
+
+.terminal-hero {
+  background: radial-gradient(circle at top right, rgb(0 255 65 / 8%), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgb(0 212 255 / 10%), transparent 42%),
+    linear-gradient(180deg, rgb(18 18 18 / 96%), rgb(12 12 12 / 96%));
+}
+
+.section-title {
+  color: var(--color-terminal-cyan);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stat-chip {
+  border: 1px solid var(--color-terminal-border);
+  background: rgb(19 19 19 / 84%);
+  border-radius: 0.6rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.stat-label {
+  color: var(--color-terminal-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  color: var(--color-terminal-text);
+  font-size: 0.84rem;
+  margin-top: 0.4rem;
+}
+
+.filter-chip {
+  align-items: center;
+  border: 1px solid var(--color-terminal-border);
+  border-radius: 999px;
+  color: var(--color-terminal-muted);
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.filter-chip input {
+  accent-color: var(--color-terminal-cyan);
+}
+
+.status-badge {
+  border-radius: 999px;
+  font-size: 0.64rem;
+  letter-spacing: 0.07em;
+  padding: 0.1rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.status-ok {
+  background: rgb(0 255 65 / 14%);
+  color: var(--color-terminal-green);
+}
+
+.status-warn {
+  background: rgb(255 176 0 / 14%);
+  color: var(--color-terminal-amber);
+}
+
+.status-error {
+  background: rgb(255 77 79 / 14%);
+  color: var(--color-terminal-error);
+}
+
+.status-muted {
+  background: rgb(154 154 154 / 14%);
+  color: var(--color-terminal-muted);
+}
+
+.terminal-button {
+  background: rgb(0 212 255 / 12%);
+  border: 1px solid rgb(0 212 255 / 35%);
+  border-radius: 0.45rem;
+  color: var(--color-terminal-cyan);
+  cursor: pointer;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  padding: 0.28rem 0.55rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.terminal-button:hover {
+  background: rgb(0 212 255 / 18%);
+  border-color: rgb(0 212 255 / 65%);
+}
+
+.terminal-button:focus-visible {
+  outline: 2px solid var(--color-terminal-cyan);
+  outline-offset: 2px;
+}
+
+.skeleton-row {
+  animation: skeleton-pulse 1.1s ease-in-out infinite;
+  background: linear-gradient(90deg, rgb(42 42 42 / 45%), rgb(58 58 58 / 60%), rgb(42 42 42 / 45%));
+  background-size: 160% 100%;
+  border: 1px solid var(--color-terminal-border);
+  border-radius: 0.5rem;
+  height: 2.1rem;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal-up {
+  animation: reveal-up 460ms ease both;
+}
+
+@keyframes connection-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.animate-connection-pulse {
+  animation: connection-pulse 1.7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-connection-pulse {
+    animation: none;
+  }
+
+  .reveal-up {
+    animation: none;
+  }
+
+  .skeleton-row {
+    animation: none;
+  }
+}

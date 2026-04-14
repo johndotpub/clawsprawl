@@ -1,0 +1,60 @@
+---
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/700.css';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'ClawSprawl',
+  description = 'Agent swarm operations interface for ClawSprawl.'
+} = Astro.props;
+
+const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null;
+---
+
+<!doctype html>
+<html lang="en" class="h-full bg-terminal-bg text-terminal-text">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="robots" content="noindex, nofollow" />
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl.href} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    {canonicalUrl && <meta property="og:url" content={canonicalUrl.href} />}
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <title>{title}</title>
+  </head>
+  <body class="h-full">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-terminal-bg focus:px-4 focus:py-2 focus:text-terminal-green">
+      Skip to main content
+    </a>
+    <div class="scanlines"></div>
+    <div class="relative z-10 min-h-screen">
+      <slot />
+    </div>
+    <noscript>
+      <p class="p-6 text-center text-terminal-muted">
+        JavaScript is required for the live operations dashboard. Static content is still visible above.
+      </p>
+    </noscript>
+  </body>
+</html>

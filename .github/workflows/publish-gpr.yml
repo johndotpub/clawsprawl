@@ -1,0 +1,52 @@
+name: publish-gpr
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Validate package scope for GitHub Packages
+        run: |
+          node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const owner=(process.env.GITHUB_REPOSITORY_OWNER||'').toLowerCase(); const expected='@'+owner+'/'; if(!owner){ console.error('GITHUB_REPOSITORY_OWNER is missing'); process.exit(1);} if(!pkg.name || !pkg.name.toLowerCase().startsWith(expected)){ console.error('package.json name must be scoped for GitHub Packages. Expected prefix: '+expected+' (current: '+String(pkg.name)+')'); process.exit(1);}"
+
+      - name: Validate git tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const tag=String(process.env.GITHUB_REF_NAME||''); const expected='v'+pkg.version; if(tag!==expected){ console.error('Release tag must match package version. expected='+expected+' actual='+tag); process.exit(1);}"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run lint checks
+        run: npm run lint
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run strict QA gates
+        run: npm run qa:strict
+
+      - name: Verify package artifact contents
+        run: npm pack --dry-run
+
+      - name: Publish package to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

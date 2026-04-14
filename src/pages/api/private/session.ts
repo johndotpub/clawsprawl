@@ -1,0 +1,52 @@
+import type { APIRoute } from 'astro';
+import {
+  clearPrivateViewSession,
+  getAccessState,
+  isPrivateViewConfigured,
+  isValidPrivateToken,
+  readBearerToken,
+  setPrivateViewSession,
+} from '../../../lib/auth/access';
+
+/** Create a private-view session from a validated ClawSprawl bearer token. */
+export const POST: APIRoute = async ({ request, cookies }) => {
+  const accessState = getAccessState(cookies);
+  if (accessState.insecureModeEnabled) {
+    return new Response(JSON.stringify({ ok: true, mode: 'insecure' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!isPrivateViewConfigured()) {
+    return new Response(JSON.stringify({ ok: false, error: 'private-view-disabled' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const token = readBearerToken(request)
+    ?? (await request.json().catch(() => ({})) as { token?: unknown }).token as string | undefined;
+
+  if (!isValidPrivateToken(token)) {
+    return new Response(JSON.stringify({ ok: false, error: 'invalid-token' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const session = setPrivateViewSession(cookies);
+  return new Response(JSON.stringify({ ok: true, expiresAt: session.expiresAt }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+/** Clear the authenticated private-view session cookie. */
+export const DELETE: APIRoute = async ({ cookies }) => {
+  clearPrivateViewSession(cookies);
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+};

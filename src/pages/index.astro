@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/landing/Hero.astro';
+import GatewayBootstrap from '../components/dashboard/GatewayBootstrap.astro';
+import { resolveMainframeProfile } from '../config/profiles';
+import { getAccessState } from '../lib/auth/access';
+
+const profileId = import.meta.env.PUBLIC_MAINFRAME_PROFILE;
+const profile = resolveMainframeProfile(profileId);
+const pageTitle = `ClawSprawl // ${profile.label}`;
+const pageDescription = `Technical interface for ${profile.label}.`;
+const accessState = getAccessState(Astro.cookies);
+---
+
+<Base title={pageTitle} description={pageDescription}>
+  <header class="sr-only">
+    <p>{pageTitle}</p>
+  </header>
+  <main id="main-content" class="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10 md:px-10 md:py-14">
+    <Hero
+      heroTag={profile.heroTag}
+      heroTitle={profile.heroTitle}
+      heroDescription={profile.heroDescription}
+      statGateway={profile.statGateway}
+      statAccess={profile.statAccess}
+    />
+    <GatewayBootstrap
+      privateViewEnabled={accessState.privateViewEnabled}
+      privateConfigured={accessState.privateConfigured}
+      insecureModeEnabled={accessState.insecureModeEnabled}
+      accessMode={accessState.mode}
+    />
+  </main>
+  <footer class="mx-auto max-w-6xl px-6 pb-8 text-center text-xs text-terminal-muted md:px-10">
+    <p>&copy; {new Date().getFullYear()} OpenClaw &mdash; ClawSprawl is open-source under the Unlicense.</p>
+  </footer>
+</Base>

@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement or expansion
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      placeholder: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: What should change?
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / compatibility
+      placeholder: Any security, UX, or migration risks?
+  - type: textarea
+    id: docs
+    attributes:
+      label: Docs impact
+      placeholder: Which docs should be updated?

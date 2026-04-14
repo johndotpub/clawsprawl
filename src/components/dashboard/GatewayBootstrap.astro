@@ -1,0 +1,182 @@
+---
+/* Dashboard chrome is SSR-rendered; live data hydrates in browser. */
+import { PRIVATE_DASHBOARD_PANELS, PUBLIC_DASHBOARD_PANELS } from '../../lib/dashboard/panel-config';
+
+interface Props {
+  privateViewEnabled?: boolean;
+  privateConfigured?: boolean;
+  insecureModeEnabled?: boolean;
+  accessMode?: 'public' | 'token' | 'insecure';
+}
+
+const {
+  privateViewEnabled = false,
+  privateConfigured = false,
+  insecureModeEnabled = false,
+  accessMode = 'public',
+} = Astro.props;
+---
+
+<section
+  id="gateway-dashboard-root"
+  data-private-view-enabled={privateViewEnabled ? 'true' : 'false'}
+  data-private-configured={privateConfigured ? 'true' : 'false'}
+  data-access-mode={accessMode}
+  aria-label="Live operations dashboard"
+  class="reveal-up"
+  style="animation-delay: 240ms;"
+>
+  <div class="mb-3 flex items-end justify-between gap-4">
+    <h2 class="section-title">Live Operations Dashboard</h2>
+    <p class="text-xs uppercase tracking-[0.18em] text-terminal-muted">Native protocol v3</p>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <article class="terminal-panel">
+      <p class="text-xs text-terminal-muted">
+        Connection state:
+        <span id="gateway-connection-state" class="font-medium text-terminal-amber">idle</span>
+      </p>
+      <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-terminal-muted">
+        <span id="gateway-stale-badge" class="status-badge status-ok">fresh</span>
+        <span>reconnects:<span id="gateway-reconnect-count" class="ml-1 text-terminal-text">0</span></span>
+        <span>errors:<span id="gateway-error-count" class="ml-1 text-terminal-text">0</span></span>
+      </div>
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        <button id="gateway-retry" class="terminal-button" type="button" aria-describedby="gateway-retry-note">Retry Connection</button>
+        <p id="gateway-retry-note" class="text-[11px] text-terminal-muted">Auto-reconnect enabled.</p>
+      </div>
+      <dl class="mt-3 grid gap-2 text-xs text-terminal-muted sm:grid-cols-3">
+        <div>
+          <dt class="text-terminal-cyan">Agents</dt>
+          <dd id="gateway-agents" class="mt-1 text-terminal-text">0</dd>
+        </div>
+        <div>
+          <dt class="text-terminal-cyan">Sessions</dt>
+          <dd id="gateway-sessions" class="mt-1 text-terminal-text">0</dd>
+        </div>
+        <div>
+          <dt class="text-terminal-cyan">Last updated</dt>
+          <dd id="gateway-updated" class="mt-1 text-terminal-text">-</dd>
+        </div>
+      </dl>
+      <p id="gateway-message" class="mt-4 text-xs text-terminal-muted">
+        Waiting for gateway bootstrap snapshot.
+      </p>
+      <ul id="gateway-agent-list" aria-live="polite" class="mt-4 space-y-2 text-xs"></ul>
+    </article>
+
+    {
+      PUBLIC_DASHBOARD_PANELS.map((panel) => (
+        <article class={panel.articleClassName}>
+          <h3 class="text-sm font-semibold text-terminal-text">{panel.title}</h3>
+          <ul id={panel.id} aria-live="polite" class={panel.listClassName}></ul>
+        </article>
+      ))
+    }
+
+    <article class="terminal-panel lg:col-span-2">
+      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-terminal-text">Private Operations View</h3>
+          <p class="mt-1 text-xs text-terminal-muted">
+            {
+              insecureModeEnabled
+                ? 'Insecure mode is active. Private cards and the full realtime feed are unlocked for this deployment.'
+                : privateConfigured
+                  ? 'Unlock private cards and the full realtime feed with your ClawSprawl bearer token.'
+                  : accessMode === 'public'
+                    ? 'Private routes are disabled in public mode. Set token mode to protect private cards on shared or public deployments.'
+                    : 'Private routes are unavailable until token mode is configured.'
+            }
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          {
+            privateViewEnabled ? (
+              <button id="private-view-lock" class="terminal-button" type="button">Lock Private View</button>
+            ) : privateConfigured ? (
+              <form id="private-view-form" class="flex flex-wrap items-center gap-2">
+                <input
+                  id="private-view-token"
+                  name="token"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Enter bearer token"
+                  class="min-w-64 rounded border border-terminal-border bg-terminal-surface px-3 py-2 text-xs text-terminal-text"
+                />
+                <button class="terminal-button" type="submit">Unlock Private View</button>
+              </form>
+            ) : (
+              <span class="status-badge status-muted">Private View Disabled</span>
+            )
+          }
+        </div>
+      </div>
+
+      {
+        privateViewEnabled ? (
+          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            {
+              PRIVATE_DASHBOARD_PANELS.map((panel) => (
+                <article class={panel.articleClassName}>
+                  <h3 class="text-sm font-semibold text-terminal-text">{panel.title}</h3>
+                  <ul id={panel.id} aria-live="polite" class={panel.listClassName}></ul>
+                </article>
+              ))
+            }
+            <article class="terminal-panel lg:col-span-2">
+              <h3 class="text-sm font-semibold text-terminal-text">Activity Feed</h3>
+              <fieldset class="mt-3">
+                <legend class="text-[10px] uppercase tracking-[0.18em] text-terminal-muted">Event Filter</legend>
+                <div id="gateway-event-filters" class="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  <label class="filter-chip"><input type="checkbox" value="cron" checked /> cron</label>
+                  <label class="filter-chip"><input type="checkbox" value="heartbeat" checked /> heartbeat</label>
+                  <label class="filter-chip"><input type="checkbox" value="session" checked /> session</label>
+                  <label class="filter-chip"><input type="checkbox" value="message" checked /> message</label>
+                  <label class="filter-chip"><input type="checkbox" value="tool" checked /> tool</label>
+                  <label class="filter-chip"><input type="checkbox" value="permission" checked /> permission</label>
+                  <label class="filter-chip"><input type="checkbox" value="file" checked /> file</label>
+                  <label class="filter-chip"><input type="checkbox" value="health" checked /> health</label>
+                  <label class="filter-chip"><input type="checkbox" value="presence" checked /> presence</label>
+                  <label class="filter-chip"><input type="checkbox" value="other" checked /> other</label>
+                </div>
+              </fieldset>
+              <ul id="gateway-event-list" aria-live="polite" class="mt-3 max-h-56 space-y-2 overflow-auto text-xs text-terminal-muted"></ul>
+            </article>
+          </div>
+        ) : (
+          <details id="private-preview" class="mt-4">
+            <summary class="cursor-pointer text-xs uppercase tracking-[0.18em] text-terminal-cyan">Preview private cards</summary>
+            <div class="mt-4 grid gap-4 lg:grid-cols-2">
+              {
+                PRIVATE_DASHBOARD_PANELS.map((panel) => (
+                  <article class={panel.articleClassName}>
+                    <div class="flex items-center justify-between gap-3">
+                      <h3 class="text-sm font-semibold text-terminal-text">{panel.title}</h3>
+                      <span class="status-badge status-warn">Locked</span>
+                    </div>
+                    <p class="mt-3 text-xs text-terminal-muted">{panel.lockedReason}</p>
+                  </article>
+                ))
+              }
+              <article class="terminal-panel lg:col-span-2">
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="text-sm font-semibold text-terminal-text">Activity Feed</h3>
+                  <span class="status-badge status-warn">Locked</span>
+                </div>
+                <p class="mt-3 text-xs text-terminal-muted">Contains detailed realtime operator activity.</p>
+              </article>
+            </div>
+          </details>
+        )
+      }
+    </article>
+  </div>
+</section>
+
+<script>
+  import { initGatewayDashboard } from '../../lib/dashboard/bootstrap';
+
+  initGatewayDashboard();
+</script>
