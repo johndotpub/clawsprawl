@@ -134,7 +134,8 @@ EOF
 ```sh
 curl -i \
   -X POST http://127.0.0.1:4321/api/private/session \
-  -H 'Authorization: Bearer YOUR_PRIVATE_TOKEN'
+  -H 'Content-Type: application/json' \
+  -d '{"token":"YOUR_PRIVATE_TOKEN"}'
 ```
 
 ### 6) Public-vs-private route examples

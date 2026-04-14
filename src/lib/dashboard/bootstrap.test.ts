@@ -264,9 +264,9 @@ describe('initGatewayDashboard', () => {
   it('does not submit unlock flow when private mode is not configured', async () => {
     installGlobals(false, false);
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 }),
-    );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+      new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 })
+    ));
 
     initGatewayDashboard();
     await flushAsyncWork();
@@ -305,9 +305,9 @@ describe('initGatewayDashboard', () => {
   it('retries bootstrap when retry button is pressed', async () => {
     installGlobals(false, true);
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 }),
-    );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+      new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 })
+    ));
 
     initGatewayDashboard();
     await flushAsyncWork();
@@ -324,7 +324,7 @@ describe('initGatewayDashboard', () => {
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 503 }))
-      .mockResolvedValue(new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify(makeSnapshot('connected')), { status: 200 }));
 
     initGatewayDashboard();
     await flushAsyncWork();
