@@ -7,39 +7,39 @@ Last reviewed for release baseline: `v0.42.0`.
 ## Start Here
 
 - Repository homepage and setup: [`../README.md`](../README.md)
-- Full docs hub: [`./`](./)
+- This docs index: [`README.md`](README.md)
 - Screenshot gallery: [`screenshots/README.md`](screenshots/README.md)
 
 ## What Goes Where
 
-- `README.md` (repo root): quickstart, architecture overview, deploy modes, and links to deeper docs.
-- `docs/technical-design-plan.md`: design intent, architecture decisions, and roadmap-level changes.
-- `docs/operations-runbook.md`: incident response, operational checks, health endpoints, and recovery flow.
-- `docs/heredoc-api-sourcecode.md`: executable heredoc examples and API/sourcecode doc conventions.
-- `docs/extensions.md`: extension interfaces, implementation checklist, and extension safety rules.
-- `CHANGELOG.md` and `VERSIONING.md`: release history and version policy.
+- [`../README.md`](../README.md): quickstart, architecture overview, deploy modes, and links to deeper docs.
+- [`technical-design-plan.md`](technical-design-plan.md): design intent, architecture decisions, and roadmap-level changes.
+- [`operations-runbook.md`](operations-runbook.md): incident response, operational checks, health endpoints, and recovery flow.
+- [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md): executable heredoc examples and API/sourcecode doc conventions.
+- [`extensions.md`](extensions.md): extension interfaces, implementation checklist, and extension safety rules.
+- [`../CHANGELOG.md`](../CHANGELOG.md) and [`../VERSIONING.md`](../VERSIONING.md): release history and version policy.
 
 ## Core Documents
 
-- `technical-design-plan.md` — living architecture spec, active roadmap checklist, and deferred parking lot.
-- `operations-runbook.md` — runtime operations, incident triage, and token rotation steps.
-- `heredoc-api-sourcecode.md` — Heredoc conventions and API/sourcecode documentation patterns.
-- `extensions.md` — extension surfaces, implementation checklist, and example add-on flow.
-- `../CHANGELOG.md` — public release history.
-- `../VERSIONING.md` — semantic versioning policy.
+- [`technical-design-plan.md`](technical-design-plan.md) - living architecture spec, active roadmap checklist, and deferred parking lot.
+- [`operations-runbook.md`](operations-runbook.md) - runtime operations, incident triage, and token rotation steps.
+- [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md) - Heredoc conventions and API/sourcecode documentation patterns.
+- [`extensions.md`](extensions.md) - extension surfaces, implementation checklist, and example add-on flow.
+- [`../CHANGELOG.md`](../CHANGELOG.md) - public release history.
+- [`../VERSIONING.md`](../VERSIONING.md) - semantic versioning policy.
 
 ## Community and Governance
 
-- `../CONTRIBUTING.md`
-- `../CODE_OF_CONDUCT.md`
-- `../SECURITY.md`
-- `../SUPPORT.md`
-- `../AGENTS.md`
-- `../LICENSE` — Unlicense (public domain)
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md)
+- [`../SECURITY.md`](../SECURITY.md)
+- [`../SUPPORT.md`](../SUPPORT.md)
+- [`../AGENTS.md`](../AGENTS.md)
+- [`../LICENSE`](../LICENSE) - Unlicense (public domain)
 
 ## Visual Assets
 
-- `screenshots/` — Playwright-captured documentation images.
+- [`screenshots/`](screenshots/) - Playwright-captured documentation images.
   - Includes both public locked and private unlocked dashboard captures.
 
 Preview snapshots:
@@ -50,12 +50,12 @@ Preview snapshots:
 
 ## Suggested Reading Order
 
-1. `technical-design-plan.md`
-2. `operations-runbook.md`
-3. `heredoc-api-sourcecode.md`
-4. `extensions.md`
-5. `../CHANGELOG.md`
-6. `../VERSIONING.md`
+1. [`technical-design-plan.md`](technical-design-plan.md)
+2. [`operations-runbook.md`](operations-runbook.md)
+3. [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md)
+4. [`extensions.md`](extensions.md)
+5. [`../CHANGELOG.md`](../CHANGELOG.md)
+6. [`../VERSIONING.md`](../VERSIONING.md)
 
 ## Validation Commands
 
@@ -66,5 +66,5 @@ npm run test:e2e    # Playwright browser smoke tests
 
 ## Release Automation 🤖
 
-- `.github/workflows/publish-gpr.yml` publishes the npm package to GitHub Packages on release tags.
-- `.github/workflows/publish-container.yml` publishes the container image to GHCR on release tags.
+- [`.github/workflows/publish-gpr.yml`](../.github/workflows/publish-gpr.yml) publishes the npm package to GitHub Packages on release tags.
+- [`.github/workflows/publish-container.yml`](../.github/workflows/publish-container.yml) publishes the container image to GHCR on release tags.
