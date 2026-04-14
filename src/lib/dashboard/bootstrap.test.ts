@@ -76,6 +76,15 @@ describe('initGatewayDashboard', () => {
     }
   }
 
+  async function waitFor(condition: () => boolean, cycles = 60): Promise<void> {
+    for (let i = 0; i < cycles; i += 1) {
+      if (condition()) return;
+      await flushAsyncWork(1);
+    }
+
+    throw new Error('Condition was not met before timeout');
+  }
+
   function installGlobals(withPrivate = false, privateConfigured = true): void {
     const baseIds = [
       'gateway-dashboard-root',
@@ -210,6 +219,8 @@ describe('initGatewayDashboard', () => {
 
     initGatewayDashboard();
     await flushAsyncWork();
+
+    await waitFor(() => (elements.get('gateway-message')?.textContent ?? '').includes('private view unlocked'));
 
     expect(elements.get('gateway-message')?.textContent).toContain('private view unlocked');
     expect(eventSources).toHaveLength(2);
