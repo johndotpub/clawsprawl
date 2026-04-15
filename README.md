@@ -77,7 +77,8 @@ Private unlocked state:
 </a>
 
 - Click either thumbnail to open the full-size screenshot.
-- Full gallery (desktop, mobile, and live-ops captures): [`docs/screenshots/README.md`](docs/screenshots/README.md)
+- Mobile public locked view: [`main-overview-mobile-public-locked.png`](docs/screenshots/main-overview-mobile-public-locked.png)
+- Mobile private unlocked view: [`main-overview-mobile-private-unlocked.png`](docs/screenshots/main-overview-mobile-private-unlocked.png)
 
 ## Profile Configuration
 
