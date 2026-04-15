@@ -1,102 +1,13 @@
 # Operations Runbook
 
-## Runtime Topology
+This runbook is the canonical guide for incident triage, recovery, and operator health verification.
 
-```mermaid
-flowchart LR
-  Browser[Browser UI] -->|fetch + SSE| Server[ClawSprawl SSR Server]
-  Server -->|WebSocket v3| Gateway[OpenClaw Gateway\nws://localhost:18789/ws]
-  Gateway --> Providers[Model Providers]
-  Gateway --> Jobs[Cron / Automation]
-```
+For setup and runtime commands, use [`deployment-guide.md`](deployment-guide.md).
+For architecture diagrams and request flow, use [`architecture-overview.md`](architecture-overview.md).
 
-The Astro SSR server holds the gateway token and maintains the persistent WebSocket connection. The browser connects to the SSR server via HTTP and SSE — no gateway token or direct gateway access is needed in the browser.
+## Operational Endpoints
 
-## Quick Ops Commands
-
-```sh
-npm run ops -- status
-npm run ops -- qa-strict
-npm run ops -- tmux-up --profile private-local
-npm run ops -- tmux-up --profile-file /path/to/private-profile.ts
-npm run ops -- dev --profile-file /path/to/private-profile.ts
-npm run ops -- start
-```
-
-`--profile-file` copies your profile to `src/config/profiles/private.local.ts` and auto-selects the profile id found in that file (unless `--profile` is explicitly passed).
-
-## Runtime Mode
-
-ClawSprawl uses a single **SSR mode**:
-
-1. The Astro SSR server starts and connects to the OpenClaw gateway via WebSocket
-2. The server authenticates using `OPENCLAW_GATEWAY_TOKEN` from the environment
-3. The server caches RPC responses and buffers gateway events
-4. The browser fetches `/api/public/dashboard.json` for public snapshots and `/api/public/events` for snapshot invalidation SSE
-5. In `CLAWSPRAWL_MODE=token`, optional private unlock posts `CLAWSPRAWL_PRIVATE_TOKEN` to `/api/private/session` and upgrades the same page with cookie-backed `/api/private/*` routes
-   - private cookie lifetime is browser-session scoped, with server-side expiry capped by `CLAWSPRAWL_SESSION_MAX_AGE_HOURS` (max 24h)
-6. In `CLAWSPRAWL_MODE=insecure`, private cards are enabled without a token and must remain on a private network only
-
-## Start Services
-
-1. Configure environment:
-
-```sh
-# Set your gateway token (server-side only)
-export OPENCLAW_GATEWAY_TOKEN=<your-token>
-
-# Choose access mode
-export CLAWSPRAWL_MODE=token
-
-# Optional in token mode: enable private dashboard unlock
-export CLAWSPRAWL_PRIVATE_TOKEN=<your-private-bearer-token>
-
-# Optional in token mode: cap private session lifetime (max 24 hours)
-export CLAWSPRAWL_SESSION_MAX_AGE_HOURS=24
-```
-
-2. Development:
-
-```sh
-npm run dev
-```
-
-3. Production:
-
-```sh
-npm run build
-npm run start
-```
-
-### Container runtime
-
-Pull and run release image from GHCR:
-
-```sh
-docker pull ghcr.io/johndotpub/clawsprawl:v0.42.0
-
-docker run --rm -p 4321:4321 \
-  -e OPENCLAW_GATEWAY_TOKEN=<your-token> \
-  -e OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789/ws \
-  -e OPENCLAW_GATEWAY_HTTP_URL=http://127.0.0.1:18789 \
-  -e CLAWSPRAWL_MODE=token \
-  -e CLAWSPRAWL_PRIVATE_TOKEN=<your-private-bearer-token> \
-  -e CLAWSPRAWL_SESSION_MAX_AGE_HOURS=24 \
-  ghcr.io/johndotpub/clawsprawl:v0.42.0
-```
-
-For private-network-only public dashboards:
-
-```sh
-docker run --rm -p 4321:4321 \
-  -e OPENCLAW_GATEWAY_TOKEN=<your-token> \
-  -e CLAWSPRAWL_MODE=public \
-  ghcr.io/johndotpub/clawsprawl:v0.42.0
-```
-
-## API Endpoints
-
-The SSR server exposes these API routes:
+The SSR server exposes these key routes for incident debugging:
 
 - `GET /api/public/dashboard.json` — cached public-safe snapshot for unauthenticated viewers
 - `GET /api/public/events` — public snapshot invalidation SSE plus keepalive ping

@@ -70,4 +70,5 @@ By submitting a pull request, you certify that you have the right to submit the 
 - Never commit live tokens, keys, or private host details.
 - Gateway token is server-side only (`OPENCLAW_GATEWAY_TOKEN`).
 - Private dashboard unlock uses a separate server-side token (`CLAWSPRAWL_PRIVATE_TOKEN`) in `CLAWSPRAWL_MODE=token`.
-- Runbook updates belong in `docs/operations-runbook.md`.
+- Setup/deploy command updates belong in `docs/deployment-guide.md`.
+- Incident and recovery updates belong in `docs/operations-runbook.md`.

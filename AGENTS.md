@@ -27,9 +27,11 @@ npm run test:e2e
 ## Documentation Anchors
 
 - `docs/technical-design-plan.md` — architecture and phase roadmap
+- `docs/architecture-overview.md` — Mermaid system/request flow diagrams
+- `docs/deployment-guide.md` — canonical setup/deploy/runtime command reference
 - `CHANGELOG.md` — release history
 - `VERSIONING.md` — semver policy
-- `docs/operations-runbook.md` — operational incidents and SSR/gateway recovery procedures
+- `docs/operations-runbook.md` — canonical incident triage and SSR/gateway recovery procedures
 - `docs/extensions.md` — extension surfaces and implementation checklist
 
 ## Commit Style
