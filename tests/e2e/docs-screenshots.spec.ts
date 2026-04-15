@@ -78,22 +78,12 @@ test('capture documentation screenshots (desktop + mobile)', async ({ browser })
     fullPage: true,
   });
 
-  const hero = desktopPage.locator('section').first();
-  await hero.screenshot({ path: path.join(screenshotDir, 'hero-section-desktop.png') });
-
-  const liveOpsPanel = desktopPage.locator('section:has-text("Live Operations Dashboard")').first();
-  await liveOpsPanel.screenshot({ path: path.join(screenshotDir, 'live-ops-desktop-public-locked.png') });
-
   // Private unlocked state
   await unlockPrivateView(desktopPage);
   await stabilize(desktopPage);
   await desktopPage.screenshot({
     path: path.join(screenshotDir, 'main-overview-desktop-private-unlocked.png'),
     fullPage: true,
-  });
-  const liveOpsPanelUnlocked = desktopPage.locator('section:has-text("Live Operations Dashboard")').first();
-  await liveOpsPanelUnlocked.screenshot({
-    path: path.join(screenshotDir, 'live-ops-desktop-private-unlocked.png'),
   });
 
   await desktop.close();

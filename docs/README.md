@@ -8,7 +8,7 @@ Last reviewed for release baseline: `v0.42.1`.
 
 - Repository homepage and setup: [`../README.md`](../README.md)
 - This docs index: [`README.md`](README.md)
-- Screenshot gallery: [`screenshots/README.md`](screenshots/README.md)
+- Screenshots directory: [`screenshots/`](screenshots/)
 
 ## What Goes Where
 
@@ -44,7 +44,7 @@ Last reviewed for release baseline: `v0.42.1`.
 ## Visual Assets
 
 - [`screenshots/`](screenshots/) - Playwright-captured documentation images.
-  - Includes both public locked and private unlocked dashboard captures.
+  - Includes desktop and mobile dashboard captures.
 
 Preview snapshots:
 
