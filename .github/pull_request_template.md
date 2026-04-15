@@ -12,5 +12,5 @@
 
 - [ ] `docs/technical-design-plan.md` updated (if architecture/phase changed)
 - [ ] `CHANGELOG.md` updated (if release-notable)
-- [ ] `docs/deployment-and-operations.md` updated (if setup/deploy/runtime commands changed)
+- [ ] `docs/deployment-guide.md` updated (if setup/deploy/runtime commands changed)
 - [ ] `docs/operations-runbook.md` updated (if incident handling/recovery flow changed)

@@ -3,7 +3,7 @@
 ## Getting Help 🛟
 
 - Read `README.md` first for setup and runtime basics.
-- Use `docs/deployment-and-operations.md` for environment, deploy, and runtime command help.
+- Use `docs/deployment-guide.md` for environment, deploy, and runtime command help.
 - Use `docs/operations-runbook.md` for incident triage.
 - Use `docs/extensions.md` for feature-extension patterns.
 

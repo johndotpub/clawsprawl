@@ -28,7 +28,7 @@ npm run test:e2e
 
 - `docs/technical-design-plan.md` — architecture and phase roadmap
 - `docs/architecture-overview.md` — Mermaid system/request flow diagrams
-- `docs/deployment-and-operations.md` — canonical setup/deploy/runtime command reference
+- `docs/deployment-guide.md` — canonical setup/deploy/runtime command reference
 - `CHANGELOG.md` — release history
 - `VERSIONING.md` — semver policy
 - `docs/operations-runbook.md` — canonical incident triage and SSR/gateway recovery procedures

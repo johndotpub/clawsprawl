@@ -24,7 +24,7 @@ Default indexing posture: pages are shipped with `noindex, nofollow` meta robots
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Visual architecture and Mermaid flows: [`docs/architecture-overview.md`](docs/architecture-overview.md)
-- Deployment, environment, and npm operations (canonical): [`docs/deployment-and-operations.md`](docs/deployment-and-operations.md)
+- Deployment, environment, and npm operations (canonical): [`docs/deployment-guide.md`](docs/deployment-guide.md)
 - Architecture and roadmap: [`docs/technical-design-plan.md`](docs/technical-design-plan.md)
 - Incident response and recovery (canonical): [`docs/operations-runbook.md`](docs/operations-runbook.md)
 - API/sourcecode docs: [`docs/heredoc-api-sourcecode.md`](docs/heredoc-api-sourcecode.md)
@@ -60,7 +60,7 @@ ClawSprawl keeps gateway credentials server-side only.
 - In `token` mode, private cards unlock through `/api/private/session` and a secure `httpOnly` session cookie.
 - `insecure` mode is for private-network deployments only.
 
-Operational setup guidance: [`docs/deployment-and-operations.md`](docs/deployment-and-operations.md). Incident guidance: [`docs/operations-runbook.md`](docs/operations-runbook.md).
+Operational setup guidance: [`docs/deployment-guide.md`](docs/deployment-guide.md). Incident guidance: [`docs/operations-runbook.md`](docs/operations-runbook.md).
 
 ## Dashboard States
 

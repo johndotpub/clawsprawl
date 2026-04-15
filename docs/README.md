@@ -14,7 +14,7 @@ Last reviewed for release baseline: `v0.42.0`.
 
 - [`../README.md`](../README.md): quickstart, architecture overview, deploy modes, and links to deeper docs.
 - [`architecture-overview.md`](architecture-overview.md): Mermaid system and sequence diagrams with architecture boundaries.
-- [`deployment-and-operations.md`](deployment-and-operations.md): canonical setup/deploy/runtime commands, env vars, and release automation.
+- [`deployment-guide.md`](deployment-guide.md): canonical setup/deploy/runtime commands, env vars, and release automation.
 - [`technical-design-plan.md`](technical-design-plan.md): design intent, architecture decisions, and roadmap-level changes.
 - [`operations-runbook.md`](operations-runbook.md): canonical incident response and recovery flow.
 - [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md): executable heredoc examples and API/sourcecode doc conventions.
@@ -24,7 +24,7 @@ Last reviewed for release baseline: `v0.42.0`.
 ## Core Documents
 
 - [`architecture-overview.md`](architecture-overview.md) - visual system flow and request/session sequence diagrams.
-- [`deployment-and-operations.md`](deployment-and-operations.md) - deployment matrix, environment contracts, and run commands.
+- [`deployment-guide.md`](deployment-guide.md) - deployment matrix, environment contracts, and run commands.
 - [`technical-design-plan.md`](technical-design-plan.md) - living architecture spec, active roadmap checklist, and deferred parking lot.
 - [`operations-runbook.md`](operations-runbook.md) - incident triage, token rotation, and recovery procedures.
 - [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md) - Heredoc conventions and API/sourcecode documentation patterns.
@@ -55,7 +55,7 @@ Preview snapshots:
 ## Suggested Reading Order
 
 1. [`architecture-overview.md`](architecture-overview.md)
-2. [`deployment-and-operations.md`](deployment-and-operations.md)
+2. [`deployment-guide.md`](deployment-guide.md)
 3. [`technical-design-plan.md`](technical-design-plan.md)
 4. [`operations-runbook.md`](operations-runbook.md)
 5. [`heredoc-api-sourcecode.md`](heredoc-api-sourcecode.md)

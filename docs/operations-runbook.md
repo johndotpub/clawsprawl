@@ -2,7 +2,7 @@
 
 This runbook is the canonical guide for incident triage, recovery, and operator health verification.
 
-For setup and runtime commands, use [`deployment-and-operations.md`](deployment-and-operations.md).
+For setup and runtime commands, use [`deployment-guide.md`](deployment-guide.md).
 For architecture diagrams and request flow, use [`architecture-overview.md`](architecture-overview.md).
 
 ## Operational Endpoints
