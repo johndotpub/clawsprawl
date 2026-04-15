@@ -1,6 +1,6 @@
 # ClawSprawl 🕶️🤖
 
-![Version](https://img.shields.io/badge/version-0.42.0-00d4ff)
+![Version](https://img.shields.io/badge/version-0.42.1-00d4ff)
 ![License: Unlicense](https://img.shields.io/badge/license-Unlicense-00ff41)
 ![Node](https://img.shields.io/badge/node-22.12%2B-339933?logo=node.js&logoColor=white)
 ![Astro](https://img.shields.io/badge/astro-6.x-FF5D01?logo=astro&logoColor=white)

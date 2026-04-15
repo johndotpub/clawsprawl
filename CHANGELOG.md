@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.42.1] - 2026-04-14
+
+### Changed
+
+- Dependency and audit baseline updated after v0.42.0 with Astro `^6.1.6` and Vite pinned to `7.3.2` via overrides to clear production security checks.
+- Dashboard bootstrap tests were stabilized for CI timing and repeated `Response` body-read behavior.
+- Documentation information architecture was reorganized so the repo homepage stays concise while deep technical content lives under `docs/`.
+- Deployment guidance was consolidated under `docs/deployment-guide.md`, and incident triage/recovery remains canonical in `docs/operations-runbook.md`.
+
+### Fixed
+
+- `npm audit --omit=dev` pipeline failures caused by transitive Vite advisory in pre-merge branches.
+- Flaky private unlock test behavior in `src/lib/dashboard/bootstrap.test.ts` during CI runs.
+- Documentation secret-pattern false positive risk by using JSON token payload examples for private session bootstrap snippets.
+
+### Quality
+
+- Strict QA gates (`npm run qa:strict`) and e2e validation are passing on the post-release hardening branch.
+- Cross-document references were normalized to use real clickable links and canonical doc ownership.
+
 ## [0.42.0] - 2026-04-12
 
 ### Added

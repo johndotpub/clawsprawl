@@ -13,6 +13,7 @@ This project uses Semantic Versioning (`MAJOR.MINOR.PATCH`).
 This repository is published with a clean-room baseline release:
 
 - `0.42.0`: first public baseline release with live SSR dashboard, strict QA gates, docs/screenshots, and least-privilege default auth scope.
+- `0.42.1`: post-release hardening patch with CI/security stabilization and documentation IA cleanup.
 
 ## Release Workflow
 
