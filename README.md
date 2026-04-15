@@ -64,11 +64,16 @@ Operational setup guidance: [`docs/deployment-guide.md`](docs/deployment-guide.m
 
 ## Dashboard States
 
+Public locked state:
+
 <a href="docs/screenshots/main-overview-desktop-public-locked.png">
-  <img src="docs/screenshots/main-overview-desktop-public-locked.png" alt="Public locked dashboard thumbnail" width="320" />
+  <img src="docs/screenshots/main-overview-desktop-public-locked.png" alt="Public locked dashboard thumbnail" width="160" />
 </a>
+
+Private unlocked state:
+
 <a href="docs/screenshots/main-overview-desktop-private-unlocked.png">
-  <img src="docs/screenshots/main-overview-desktop-private-unlocked.png" alt="Private unlocked dashboard thumbnail" width="320" />
+  <img src="docs/screenshots/main-overview-desktop-private-unlocked.png" alt="Private unlocked dashboard thumbnail" width="160" />
 </a>
 
 - Click either thumbnail to open the full-size screenshot.
