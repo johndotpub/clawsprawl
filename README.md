@@ -64,8 +64,14 @@ Operational setup guidance: [`docs/deployment-guide.md`](docs/deployment-guide.m
 
 ## Dashboard States
 
-- Public locked state: [`main-overview-desktop-public-locked.png`](docs/screenshots/main-overview-desktop-public-locked.png)
-- Private unlocked state: [`main-overview-desktop-private-unlocked.png`](docs/screenshots/main-overview-desktop-private-unlocked.png)
+<a href="docs/screenshots/main-overview-desktop-public-locked.png">
+  <img src="docs/screenshots/main-overview-desktop-public-locked.png" alt="Public locked dashboard thumbnail" width="320" />
+</a>
+<a href="docs/screenshots/main-overview-desktop-private-unlocked.png">
+  <img src="docs/screenshots/main-overview-desktop-private-unlocked.png" alt="Private unlocked dashboard thumbnail" width="320" />
+</a>
+
+- Click either thumbnail to open the full-size screenshot.
 - Full gallery (desktop, mobile, and live-ops captures): [`docs/screenshots/README.md`](docs/screenshots/README.md)
 
 ## Profile Configuration
