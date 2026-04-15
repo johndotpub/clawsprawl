@@ -64,15 +64,9 @@ Operational setup guidance: [`docs/deployment-guide.md`](docs/deployment-guide.m
 
 ## Dashboard States
 
-Public dashboard with private cards locked:
-
-![Public dashboard with private cards locked](docs/screenshots/main-overview-desktop-public-locked.png)
-
-Private dashboard unlocked after token bootstrap:
-
-![Private dashboard with private cards unlocked](docs/screenshots/main-overview-desktop-private-unlocked.png)
-
-Full gallery (mobile and panel captures): [`docs/screenshots/README.md`](docs/screenshots/README.md)
+- Public locked state: [`main-overview-desktop-public-locked.png`](docs/screenshots/main-overview-desktop-public-locked.png)
+- Private unlocked state: [`main-overview-desktop-private-unlocked.png`](docs/screenshots/main-overview-desktop-private-unlocked.png)
+- Full gallery (desktop, mobile, and live-ops captures): [`docs/screenshots/README.md`](docs/screenshots/README.md)
 
 ## Profile Configuration
 
