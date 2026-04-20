@@ -8,7 +8,9 @@ RUN npm ci
 FROM node:22.12-bookworm-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json package-lock.json astro.config.mjs tsconfig.json ./
+COPY src/ ./src/
+COPY public/ ./public/
 RUN npm ci --ignore-scripts && npm run build
 
 FROM node:22.12-bookworm-slim AS prod-deps
