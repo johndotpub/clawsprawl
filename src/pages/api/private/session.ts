@@ -42,12 +42,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const token = readBearerToken(request)
-    ?? await request.json()
+  const authHeaderToken = readBearerToken(request);
+
+  let resolvedToken: string | undefined;
+  if (authHeaderToken) {
+    resolvedToken = authHeaderToken;
+  } else {
+    const contentType = request.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+      return new Response(JSON.stringify({ ok: false, error: 'invalid-content-type' }), {
+        status: 415,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    resolvedToken = await request.json()
       .catch(() => ({}))
       .then((r: { token?: unknown }) => typeof r.token === 'string' ? r.token : undefined);
+  }
 
-  if (!isValidPrivateToken(token)) {
+  if (!isValidPrivateToken(resolvedToken)) {
     recordAuthFailure(clientIp);
     return new Response(JSON.stringify({ ok: false, error: 'invalid-token' }), {
       status: 401,
