@@ -332,7 +332,7 @@ export class DashboardStore {
       lastUpdatedAt: ts,
     };
     for (const listener of this.listeners) {
-      try { listener(this.state); } catch { /* swallow listener errors */ }
+      try { listener(this.state); } catch (err) { console.error('[clawsprawl:store] listener error:', err); }
     }
   }
 }
