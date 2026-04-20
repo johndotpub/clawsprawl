@@ -50,6 +50,10 @@ sequenceDiagram
 - `OPENCLAW_GATEWAY_TOKEN` stays server-side and is never sent to browser clients.
 - Public routes provide redacted data; private routes require `token` mode session unlock or `insecure` private-network deployment mode.
 
+## Challenge Nonce Verification
+
+The gateway sends a `connect.challenge` event with a `{ nonce, ts }` payload immediately after WebSocket upgrade. The client currently accepts this nonce without cryptographic verification — a MITM gateway could send any challenge and the client would comply. A future release should implement `verifyGatewayNonce` to validate the nonce against a pinned gateway identity (e.g., a public key fingerprint or HMAC) for mutual authentication.
+
 ## Module Anchors
 
 - Gateway service: [`../src/lib/gateway/server-service.ts`](../src/lib/gateway/server-service.ts)

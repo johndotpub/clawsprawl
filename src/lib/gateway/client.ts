@@ -17,6 +17,21 @@ import type {
   Snapshot,
 } from './types';
 
+/**
+ * Verify the gateway challenge nonce for mutual authentication.
+ *
+ * This stub exists to document the nonce verification path. In a future
+ * release, the client should verify the nonce against a known gateway
+ * identity (e.g., by checking a signature or comparing against a pinned
+ * gateway public key) to prevent MITM gateway impersonation.
+ *
+ * @param _nonce - The nonce string received in the connect.challenge event.
+ * @returns `true` for now — always accepts the nonce until verification is implemented.
+ */
+export function verifyGatewayNonce(_nonce: string): boolean {
+  return true;
+}
+
 /** Callback invoked whenever the connection state changes. */
 type StateListener = (state: ConnectionState) => void;
 
@@ -319,6 +334,11 @@ export class GatewayClient {
 
     // Step 1: Gateway sends connect.challenge
     if (isConnectChallenge(frame)) {
+      const nonce = frame.payload?.nonce ?? '';
+      if (!verifyGatewayNonce(nonce)) {
+        onError(new Error('Gateway nonce verification failed'));
+        return;
+      }
       const connectParams = buildConnectParams(this.options);
       const connectReq = buildRequest('connect', connectParams, this.requestIdGenerator);
 
