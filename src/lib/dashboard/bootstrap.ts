@@ -444,7 +444,8 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
         ? `Connected via SSR. ${panelCount} panels visible with private view unlocked.`
         : `Connected via SSR. ${panelCount} public panels visible.`);
     } catch (err) {
-      console.warn('[clawsprawl] dashboard fetch error:', err);
+      console.error('[clawsprawl] dashboard fetch error:', err);
+      store.setConnectionState('error');
       store.setConnectionState('error');
       setText(elements.messageEl, 'Failed to fetch dashboard data from server. Retrying...');
     } finally {
