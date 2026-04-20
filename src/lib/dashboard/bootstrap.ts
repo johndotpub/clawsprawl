@@ -411,7 +411,12 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       store.setConnectionState('error');
       return null;
     }
-    return await response.json() as DashboardSnapshotPayload;
+    const data = await response.json();
+    if (typeof data !== 'object' || data === null || !('connectionState' in data)) {
+      console.warn('[clawsprawl] dashboard fetch returned invalid shape:', url);
+      return null;
+    }
+    return data as DashboardSnapshotPayload;
   }
 
   async function fetchDashboard(): Promise<void> {
