@@ -115,10 +115,12 @@ parse_options() {
 
 load_env() {
   if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%%#*}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+      export "$line"
+    done < "$ENV_FILE"
   fi
 
   if [[ -n "$PROFILE_OVERRIDE" ]]; then
