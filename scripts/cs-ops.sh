@@ -119,7 +119,7 @@ load_env() {
       line="${line%%#*}"
       line="${line%"${line##*[![:space:]]}"}"
       [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
-      export "$line"
+      eval "export $line"
     done < "$ENV_FILE"
   fi
 
