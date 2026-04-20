@@ -7,7 +7,7 @@ RUN npm ci
 
 FROM cgr.dev/chainguard/node:latest AS build
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY package.json package-lock.json astro.config.mjs tsconfig.json ./
 COPY src/ ./src/
 COPY public/ ./public/
