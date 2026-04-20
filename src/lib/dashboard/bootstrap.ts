@@ -307,15 +307,25 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       sessionDetailListEl: renderSessionDetailRows,
     };
 
+    const panelCache = new Map<string, string>();
+
+    const safeSetInnerHTML = (el: HTMLElement | null, html: string, cacheKey: string): void => {
+      if (!el) return;
+      const prev = panelCache.get(cacheKey);
+      if (prev === html) return;
+      panelCache.set(cacheKey, html);
+      el.innerHTML = html;
+    };
+
     for (const panel of PUBLIC_DASHBOARD_PANELS) {
       const el = elements[panel.key];
-      if (el) (el as HTMLElement).innerHTML = panelRenderers[panel.key](state);
+      if (el) safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
     }
 
     if (privateViewEnabled) {
       for (const panel of PRIVATE_DASHBOARD_PANELS) {
         const el = elements[panel.key];
-        if (el) (el as HTMLElement).innerHTML = panelRenderers[panel.key](state);
+        if (el) safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
       }
     }
 
