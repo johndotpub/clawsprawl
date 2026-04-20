@@ -151,8 +151,10 @@ export function isValidPrivateToken(token: string | undefined): boolean {
 export function readBearerToken(request: Request): string | undefined {
   const authorization = request.headers.get('authorization');
   if (!authorization) return undefined;
-  const [scheme, value] = authorization.split(/\s+/, 2);
-  return scheme?.toLowerCase() === 'bearer' ? value : undefined;
+  const trimmed = authorization.trim();
+  if (!trimmed.toLowerCase().startsWith('bearer ')) return undefined;
+  const value = trimmed.slice(7).trim();
+  return value.length > 0 ? value : undefined;
 }
 
 function pruneExpiredPrivateSessions(now = Date.now()): void {
