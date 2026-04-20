@@ -268,6 +268,11 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (eventDebounceTimer) { clearTimeout(eventDebounceTimer); eventDebounceTimer = null; }
     if (publicEventSource) { publicEventSource.close(); publicEventSource = null; }
     if (privateEventSource) { privateEventSource.close(); privateEventSource = null; }
+    unsubscribeStore();
+    if (elements.eventFiltersEl) elements.eventFiltersEl.removeEventListener('change', onFilterChange);
+    if (elements.retryButtonEl) elements.retryButtonEl.removeEventListener('click', onRetryClick);
+    if (elements.privateViewFormEl) elements.privateViewFormEl.removeEventListener('submit', onFormSubmit);
+    if (elements.privateViewLockEl) elements.privateViewLockEl.removeEventListener('click', onLockClick);
   });
 
   const renderState = (state: DashboardState): void => {
@@ -388,17 +393,19 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     }
   };
 
+  const onFilterChange = () => {
+    const selected = Array.from(elements.eventFiltersEl?.querySelectorAll('input[type="checkbox"]:checked') ?? []).map(
+      (node) => node.getAttribute('value'),
+    );
+    enabledFilters = new Set(selected.filter((value): value is string => Boolean(value)));
+    renderState(store.getSnapshot());
+  };
+
   if (elements.eventFiltersEl) {
-    elements.eventFiltersEl.addEventListener('change', () => {
-      const selected = Array.from(elements.eventFiltersEl?.querySelectorAll('input[type="checkbox"]:checked') ?? []).map(
-        (node) => node.getAttribute('value'),
-      );
-      enabledFilters = new Set(selected.filter((value): value is string => Boolean(value)));
-      renderState(store.getSnapshot());
-    });
+    elements.eventFiltersEl.addEventListener('change', onFilterChange);
   }
 
-  store.subscribe(renderState);
+  const unsubscribeStore = store.subscribe(renderState);
 
   async function fetchSnapshot(url: string, onAuthFailure?: () => void): Promise<DashboardSnapshotPayload | null> {
     const response = await fetch(url);
@@ -518,28 +525,28 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     scheduleStaleChecks();
   }
 
+  const onRetryClick = () => { void bootstrap(); };
+  const onFormSubmit = (event: Event) => {
+    event.preventDefault();
+    const token = elements.privateViewTokenEl?.value?.trim() ?? '';
+    if (!privateConfigured || token.length === 0) {
+      setText(elements.messageEl, 'Enter a valid bearer token to unlock private view.');
+      return;
+    }
+    void unlockPrivateView(token);
+  };
+  const onLockClick = () => { void lockPrivateView(); };
+
   if (elements.retryButtonEl) {
-    elements.retryButtonEl.addEventListener('click', () => {
-      void bootstrap();
-    });
+    elements.retryButtonEl.addEventListener('click', onRetryClick);
   }
 
   if (elements.privateViewFormEl && elements.privateViewTokenEl) {
-    elements.privateViewFormEl.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const token = elements.privateViewTokenEl?.value?.trim() ?? '';
-      if (!privateConfigured || token.length === 0) {
-        setText(elements.messageEl, 'Enter a valid bearer token to unlock private view.');
-        return;
-      }
-      void unlockPrivateView(token);
-    });
+    elements.privateViewFormEl.addEventListener('submit', onFormSubmit);
   }
 
   if (elements.privateViewLockEl) {
-    elements.privateViewLockEl.addEventListener('click', () => {
-      void lockPrivateView();
-    });
+    elements.privateViewLockEl.addEventListener('click', onLockClick);
   }
 
   void bootstrap();
