@@ -43,6 +43,7 @@ export interface EventFrame {
   payload?: unknown;
   seq?: number;
   stateVersion?: StateVersion;
+  _sseId?: string;
 }
 
 /** Union of all wire frames. */

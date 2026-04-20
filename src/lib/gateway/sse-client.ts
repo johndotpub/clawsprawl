@@ -89,6 +89,9 @@ export class GatewaySseClient {
       if (this.options.token) {
         headers['Authorization'] = `Bearer ${this.options.token}`;
       }
+      if (lastEventId) {
+        headers['Last-Event-ID'] = lastEventId;
+      }
 
       const response = await fetch(this.options.url, {
         headers,
@@ -160,6 +163,8 @@ export class GatewaySseClient {
     let buffer = '';
     let currentEvent = '';
     let currentData = '';
+    let currentId = '';
+    let lastEventId = '';
 
     try {
       while (true) {
@@ -175,13 +180,19 @@ export class GatewaySseClient {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith('data:')) {
             currentData += (currentData ? '\n' : '') + line.slice(5).trimStart();
+          } else if (line.startsWith('id:')) {
+            currentId = line.slice(3).trim();
           } else if (line === '') {
             // End of event
             if (currentData) {
-              this.emitParsedEvent(currentEvent, currentData);
+              this.emitParsedEvent(currentEvent, currentData, currentId);
+            }
+            if (currentId) {
+              lastEventId = currentId;
             }
             currentEvent = '';
             currentData = '';
+            currentId = '';
           }
           // Ignore comment lines (starting with ':') and other lines
         }
@@ -201,7 +212,7 @@ export class GatewaySseClient {
   }
 
   /** Parse a raw SSE event and emit it as an EventFrame to listeners. */
-  private emitParsedEvent(eventName: string, data: string): void {
+  private emitParsedEvent(eventName: string, data: string, eventId: string): void {
     try {
       const parsed = JSON.parse(data);
       const frame: EventFrame = {
@@ -209,6 +220,7 @@ export class GatewaySseClient {
         event: eventName || (typeof parsed === 'object' && parsed?.event ? String(parsed.event) : 'unknown'),
         payload: typeof parsed === 'object' && parsed?.payload !== undefined ? parsed.payload : parsed,
         ...(typeof parsed === 'object' && typeof parsed?.seq === 'number' ? { seq: parsed.seq } : {}),
+        ...(eventId ? { _sseId: eventId } : {}),
       };
       for (const listener of this.listeners) {
         try { listener(frame); } catch { /* swallow listener errors */ }
