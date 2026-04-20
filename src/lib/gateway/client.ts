@@ -215,8 +215,16 @@ export class GatewayClient {
         reject(new Error(`RPC timeout: ${method}`));
       }, this.options.rpcTimeoutMs);
 
-      this.pending.set(request.id, { resolve, reject, timeout });
-      this.socket?.send(payload);
+      const entry = { resolve, reject, timeout };
+      this.pending.set(request.id, entry);
+
+      try {
+        this.socket?.send(payload);
+      } catch (err) {
+        clearTimeout(timeout);
+        this.pending.delete(request.id);
+        entry.reject(err instanceof Error ? err : new Error('ws.send() failed'));
+      }
     });
   }
 
