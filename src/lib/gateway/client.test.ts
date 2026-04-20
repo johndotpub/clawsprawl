@@ -183,7 +183,7 @@ describe('gateway client', () => {
   });
 
   it('times out rpc requests when no response arrives', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 100 });
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000, rpcTimeoutMs: 100 });
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
