@@ -130,7 +130,7 @@ export function isPrivateViewConfigured(): boolean {
   return config.mode === 'token' && Boolean(config.privateToken);
 }
 
-export function isInsecurePrivateModeEnabled(): boolean {
+function isInsecurePrivateModeEnabled(): boolean {
   const enabled = getAccessConfig().mode === 'insecure';
   if (enabled) {
     console.warn('[clawsprawl:auth] WARNING: CLAWSPRAWL_MODE=insecure — private routes are exposed without authentication');
