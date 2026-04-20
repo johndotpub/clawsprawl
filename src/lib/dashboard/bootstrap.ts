@@ -319,7 +319,14 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
 
     for (const panel of PUBLIC_DASHBOARD_PANELS) {
       const el = elements[panel.key];
-      if (el) safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
+      if (el) {
+        try {
+          safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
+        } catch (err) {
+          console.error(`Panel ${panel.key} render failed:`, err);
+          (el as HTMLElement).innerHTML = '<li class="text-red-400">Panel render error</li>';
+        }
+      }
     }
 
     if (privateViewEnabled) {
