@@ -294,12 +294,12 @@ export class DashboardStore {
     if (events.length === 0) {
       return;
     }
-    for (const event of events) {
+    for (let i = events.length - 1; i >= 0; i--) {
       if (this.eventCount < this.maxEvents) {
-        this.eventBuffer.push(event);
+        this.eventBuffer.push(events[i]);
         this.eventCount += 1;
       } else {
-        this.eventBuffer[this.eventHead] = event;
+        this.eventBuffer[this.eventHead] = events[i];
         this.eventHead = (this.eventHead + 1) % this.maxEvents;
       }
     }
@@ -307,14 +307,15 @@ export class DashboardStore {
   }
 
   private getOrderedEvents(): EventFrame[] {
+    if (this.eventCount === 0) return [];
     if (this.eventCount < this.maxEvents) {
       return [...this.eventBuffer].reverse();
     }
     const result: EventFrame[] = new Array(this.maxEvents);
     for (let i = 0; i < this.maxEvents; i++) {
-      result[i] = this.eventBuffer[(this.eventHead + i) % this.maxEvents];
+      result[i] = this.eventBuffer[(this.eventHead + this.maxEvents - 1 - i + this.maxEvents) % this.maxEvents];
     }
-    return result.reverse();
+    return result;
   }
 
   /**
