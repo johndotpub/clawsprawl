@@ -52,7 +52,7 @@ export function buildRequest(method: string, params?: unknown): RequestFrame {
 export const PROTOCOL_VERSION = 3;
 
 /** Client version string sent in ConnectParams during handshake. */
-export const CLIENT_VERSION = '0.42.0';
+export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
 
 /**
  * Build {@link ConnectParams} from client options for the `connect` handshake.
