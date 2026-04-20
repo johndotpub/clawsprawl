@@ -41,7 +41,7 @@
     "test:e2e": "playwright test",
     "test:e2e:coverage": "E2E_COVERAGE=1 playwright test tests/e2e/code-coverage.spec.ts",
     "test:docs:coverage": "node scripts/qa/docs-coverage.mjs",
-    "docs:screenshots": "OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789/ws OPENCLAW_GATEWAY_HTTP_URL=http://127.0.0.1:18789 CLAWSPRAWL_MODE=token CLAWSPRAWL_PRIVATE_TOKEN=docs-private-token DOCS_SCREENSHOTS=1 playwright test tests/e2e/docs-screenshots.spec.ts",
+    "docs:screenshots": "OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789/ws OPENCLAW_GATEWAY_HTTP_URL=http://127.0.0.1:18789 CLAWSPRAWL_MODE=token CLAWSPRAWL_PRIVATE_TOKEN=$DOCS_SCREENSHOTS_TOKEN PLACEHOLDER_DOCS_TOKEN=1 playwright test tests/e2e/docs-screenshots.spec.ts",
     "qa": "npm run test && npm run build && npm run test:e2e",
     "qa:strict": "npm run lint && npm run test:unit:coverage && npm run test:e2e && npm run test:e2e:coverage && npm run test:docs:coverage && npm run build",
     "ops": "bash scripts/cs-ops.sh",
