@@ -60,6 +60,8 @@ export class GatewayClient {
   private activeConnectUrl: string;
   private connectInFlight: Promise<HelloOk> | null = null;
   private requestIdGenerator = createRequestIdGenerator();
+  private primaryRetryTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly PRIMARY_RETRY_INTERVAL_MS = 60_000;
 
   /** Populated after a successful handshake. */
   private _helloOk: HelloOk | null = null;
@@ -148,6 +150,7 @@ export class GatewayClient {
     this.reconnectEnabled = false;
     this._helloOk = null;
     this.clearPending(new Error('Disconnected'));
+    this.clearPrimaryRetry();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -290,6 +293,7 @@ export class GatewayClient {
     this.reconnectEnabled = this.options.reconnect;
     this.reconnectAttempts = 0;
     this.reconnectDelayMs = this.options.minReconnectDelayMs;
+    this.schedulePrimaryRetry();
             resolve(helloOk);
           }, (err) => {
             handshakeComplete = true;
@@ -415,6 +419,29 @@ export class GatewayClient {
     this.state = nextState;
     for (const listener of this.stateListeners) {
       try { listener(nextState); } catch { /* swallow listener errors */ }
+    }
+  }
+
+  private schedulePrimaryRetry(): void {
+    this.clearPrimaryRetry();
+    if (!this.options.fallbackUrl || this.activeConnectUrl !== this.options.fallbackUrl) return;
+
+    this.primaryRetryTimer = setInterval(() => {
+      if (this.options.url && this.activeConnectUrl === this.options.fallbackUrl) {
+        const primaryUrl = this.options.url;
+        this.openSocket(primaryUrl).then(() => {
+          this.activeConnectUrl = primaryUrl;
+        }).catch(() => {
+          // Primary still unreachable — stay on fallback
+        });
+      }
+    }, GatewayClient.PRIMARY_RETRY_INTERVAL_MS);
+  }
+
+  private clearPrimaryRetry(): void {
+    if (this.primaryRetryTimer) {
+      clearInterval(this.primaryRetryTimer);
+      this.primaryRetryTimer = null;
     }
   }
 }
