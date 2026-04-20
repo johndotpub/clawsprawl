@@ -215,15 +215,27 @@ export class GatewaySseClient {
   private emitParsedEvent(eventName: string, data: string, eventId: string): void {
     try {
       const parsed = JSON.parse(data);
-      const frame: EventFrame = {
-        type: 'event',
-        event: eventName || (typeof parsed === 'object' && parsed?.event ? String(parsed.event) : 'unknown'),
-        payload: typeof parsed === 'object' && parsed?.payload !== undefined ? parsed.payload : parsed,
-        ...(typeof parsed === 'object' && typeof parsed?.seq === 'number' ? { seq: parsed.seq } : {}),
-        ...(eventId ? { _sseId: eventId } : {}),
-      };
-      for (const listener of this.listeners) {
-        try { listener(frame); } catch { /* swallow listener errors */ }
+      if (typeof parsed === 'object' && parsed !== null) {
+        const frame: EventFrame = {
+          type: 'event',
+          event: eventName || (typeof parsed.event === 'string' ? parsed.event : 'unknown'),
+          payload: parsed.payload !== undefined ? parsed.payload : parsed,
+          ...(typeof parsed.seq === 'number' ? { seq: parsed.seq } : {}),
+          ...(eventId ? { _sseId: eventId } : {}),
+        };
+        for (const listener of this.listeners) {
+          try { listener(frame); } catch { /* swallow listener errors */ }
+        }
+      } else {
+        const frame: EventFrame = {
+          type: 'event',
+          event: eventName || 'unknown',
+          payload: parsed,
+          ...(eventId ? { _sseId: eventId } : {}),
+        };
+        for (const listener of this.listeners) {
+          try { listener(frame); } catch { /* swallow listener errors */ }
+        }
       }
     } catch {
       /* Ignore non-JSON data lines (keepalives, comments) */
