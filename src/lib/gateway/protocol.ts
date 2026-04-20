@@ -100,7 +100,7 @@ export function buildConnectParams(options: GatewayClientOptions): ConnectParams
 export function parseMessage(input: string): GatewayFrame | null {
   try {
     const parsed = JSON.parse(input);
-    if (typeof parsed !== 'object' || parsed === null) {
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return null;
     }
     if (parsed.type === 'res') {
