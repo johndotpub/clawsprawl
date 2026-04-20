@@ -131,7 +131,11 @@ export function isPrivateViewConfigured(): boolean {
 }
 
 export function isInsecurePrivateModeEnabled(): boolean {
-  return getAccessConfig().mode === 'insecure';
+  const enabled = getAccessConfig().mode === 'insecure';
+  if (enabled) {
+    console.warn('[clawsprawl:auth] WARNING: CLAWSPRAWL_MODE=insecure — private routes are exposed without authentication');
+  }
+  return enabled;
 }
 
 export function isPrivateRouteAllowed(cookies: AstroCookies): boolean {

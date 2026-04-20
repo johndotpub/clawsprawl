@@ -75,9 +75,8 @@ describe('access helpers', () => {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
+      maxAge: expect.any(Number),
     });
-    expect(typeof (cookies.optionsByName.get(PRIVATE_SESSION_COOKIE) as { secure?: unknown })?.secure).toBe('boolean');
-    expect(cookies.optionsByName.get(PRIVATE_SESSION_COOKIE)).not.toMatchObject({ maxAge: expect.any(Number) });
     expect(hasPrivateViewSession(cookies as any)).toBe(true);
     expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
 

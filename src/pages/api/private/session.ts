@@ -28,7 +28,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const accessState = getAccessState(cookies);
   if (accessState.insecureModeEnabled) {
-    return new Response(JSON.stringify({ ok: true, mode: 'insecure' }), {
+    return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
