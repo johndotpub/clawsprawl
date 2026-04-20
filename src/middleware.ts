@@ -1,5 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import { createPrivateAuthRequiredResponse, isPrivateRouteAllowed } from './lib/auth/access';
+import { randomUUID } from 'node:crypto';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   if (context.url.pathname.startsWith('/api/private/')) {
@@ -10,6 +11,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const response = await next();
 
+  response.headers.set('X-Request-ID', randomUUID());
   response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
