@@ -194,6 +194,9 @@ export function clearPrivateViewSession(cookies: AstroCookies): void {
 }
 
 export function clearPrivateSessionsForTest(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('clearPrivateSessionsForTest is only available in test environment');
+  }
   privateSessions.clear();
 }
 
