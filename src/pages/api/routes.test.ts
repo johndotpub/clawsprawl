@@ -300,6 +300,22 @@ describe('api routes', () => {
     expect(await response.json()).toMatchObject({ ok: true, mode: 'insecure' });
   });
 
+  it('returns 401 for non-string token value in JSON body', async () => {
+    process.env.CLAWSPRAWL_MODE = 'token';
+    process.env.CLAWSPRAWL_PRIVATE_TOKEN = 'private-token';
+
+    const response = await postPrivateSession({
+      request: new Request('http://localhost/api/private/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 12345 }),
+      }),
+      cookies: createCookies(),
+    } as any);
+
+    expect(response.status).toBe(401);
+  });
+
   it('allows private routes in insecure mode without a session', async () => {
     process.env.CLAWSPRAWL_MODE = 'insecure';
     delete process.env.CLAWSPRAWL_PRIVATE_TOKEN;

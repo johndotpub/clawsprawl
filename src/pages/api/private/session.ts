@@ -42,7 +42,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   const token = readBearerToken(request)
-    ?? (await request.json().catch(() => ({})) as { token?: unknown }).token as string | undefined;
+    ?? await request.json()
+      .catch(() => ({}))
+      .then((r: { token?: unknown }) => typeof r.token === 'string' ? r.token : undefined);
 
   if (!isValidPrivateToken(token)) {
     recordAuthFailure(clientIp);
