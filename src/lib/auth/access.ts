@@ -45,6 +45,26 @@ function safeTokenEqual(a: string, b: string): boolean {
   return timingSafeEqual(hashA, hashB);
 }
 
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10;
+const AUTH_RATE_LIMIT_LOCKOUT_MS = 15 * 60 * 1000;
+const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+
+export function checkAuthRateLimit(ip: string): boolean {
+  const record = authFailures.get(ip);
+  if (!record) return true;
+  if (record.lockedUntil && Date.now() < record.lockedUntil) return false;
+  return true;
+}
+
+export function recordAuthFailure(ip: string): void {
+  const record = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
+  record.count++;
+  if (record.count >= AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
+    record.lockedUntil = Date.now() + AUTH_RATE_LIMIT_LOCKOUT_MS;
+  }
+  authFailures.set(ip, record);
+}
+
 function normalizeMode(value: string | undefined): ClawSprawlMode {
   switch (value?.trim().toLowerCase()) {
     case 'token':
