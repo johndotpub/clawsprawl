@@ -18,7 +18,7 @@
     "websocket"
   ],
   "type": "module",
-  "version": "0.42.1",
+  "version": "0.42.69",
   "license": "Unlicense",
   "private": false,
   "files": [
