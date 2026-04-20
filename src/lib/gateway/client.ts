@@ -42,7 +42,7 @@ interface PendingRequest {
  */
 export class GatewayClient {
   private readonly options: Required<
-    Pick<GatewayClientOptions, 'reconnect' | 'minReconnectDelayMs' | 'maxReconnectDelayMs' | 'connectTimeoutMs'>
+    Pick<GatewayClientOptions, 'reconnect' | 'minReconnectDelayMs' | 'maxReconnectDelayMs' | 'connectTimeoutMs' | 'rpcTimeoutMs'>
   > &
     GatewayClientOptions;
 
@@ -68,6 +68,7 @@ export class GatewayClient {
       minReconnectDelayMs: 800,
       maxReconnectDelayMs: 30_000,
       connectTimeoutMs: 10_000,
+      rpcTimeoutMs: 30_000,
       ...options,
     };
     this.reconnectDelayMs = this.options.minReconnectDelayMs;
@@ -206,7 +207,7 @@ export class GatewayClient {
       const timeout = setTimeout(() => {
         this.pending.delete(request.id);
         reject(new Error(`RPC timeout: ${method}`));
-      }, this.options.connectTimeoutMs);
+      }, this.options.rpcTimeoutMs);
 
       this.pending.set(request.id, { resolve, reject, timeout });
       this.socket?.send(payload);

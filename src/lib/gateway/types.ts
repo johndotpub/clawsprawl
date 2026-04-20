@@ -396,6 +396,8 @@ export interface GatewayClientOptions {
   maxReconnectDelayMs?: number;
   /** Timeout for connection + handshake in ms. Defaults to 10000. */
   connectTimeoutMs?: number;
+  /** Timeout for RPC calls in ms. Defaults to 30000. */
+  rpcTimeoutMs?: number;
   /**
    * Origin header for server-side WebSocket connections.
    * Required by gateways that enforce `controlUi.allowedOrigins`.
