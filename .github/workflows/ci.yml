@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -31,11 +33,17 @@ jobs:
       - name: Run lint checks
         run: npm run lint
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
       - name: Run strict QA gates
         run: npm run qa:strict
+
+      - name: Run npm audit (production)
+        run: npm audit --omit=dev
+        continue-on-error: false
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ""
 
   e2e:
     runs-on: ubuntu-latest
