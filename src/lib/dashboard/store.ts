@@ -120,6 +120,9 @@ const DEFAULT_STATE: DashboardState = {
 /** Maximum events retained in the ring buffer (default 200). */
 const DEFAULT_MAX_EVENTS = 200;
 
+/** Maximum daily cost entries retained in usageCost.daily. */
+const MAX_DAILY_COST_ENTRIES = 365;
+
 /**
  * Reactive state store for the ClawSprawl dashboard.
  *
@@ -220,6 +223,9 @@ export class DashboardStore {
 
   /** Update token usage data from `usage.cost`. */
   setUsageCost(usageCost: UsageCostResponse): void {
+    if (usageCost.daily && usageCost.daily.length > MAX_DAILY_COST_ENTRIES) {
+      usageCost = { ...usageCost, daily: usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) };
+    }
     this.update({ usageCost });
   }
 
@@ -305,7 +311,9 @@ export class DashboardStore {
     if (snapshot.cronJobs !== undefined) patch.cronJobs = snapshot.cronJobs;
     if (snapshot.cronRuns !== undefined) patch.cronRuns = snapshot.cronRuns;
     if (snapshot.models !== undefined) patch.models = snapshot.models;
-    if (snapshot.usageCost !== undefined) patch.usageCost = snapshot.usageCost;
+    if (snapshot.usageCost !== undefined) patch.usageCost = snapshot.usageCost && snapshot.usageCost.daily && snapshot.usageCost.daily.length > MAX_DAILY_COST_ENTRIES
+      ? { ...snapshot.usageCost, daily: snapshot.usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) }
+      : snapshot.usageCost;
     if (snapshot.usageStatus !== undefined) patch.usageStatus = snapshot.usageStatus;
     if (snapshot.toolsCatalog !== undefined) patch.toolsCatalog = snapshot.toolsCatalog;
     if (snapshot.skillsStatus !== undefined) patch.skillsStatus = snapshot.skillsStatus;
