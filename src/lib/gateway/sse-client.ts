@@ -163,14 +163,14 @@ export class GatewaySseClient {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split(/\r?\n/);
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           if (line.startsWith('event:')) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith('data:')) {
-            currentData += line.slice(5).trim();
+            currentData += (currentData ? '\n' : '') + line.slice(5).trimStart();
           } else if (line === '') {
             // End of event
             if (currentData) {
