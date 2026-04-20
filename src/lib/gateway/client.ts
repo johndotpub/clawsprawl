@@ -50,6 +50,8 @@ export class GatewayClient {
   private state: ConnectionState = 'idle';
   private reconnectEnabled = false;
   private reconnectDelayMs: number;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 20;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stateListeners = new Set<StateListener>();
   private eventListeners = new Set<GatewayEventListener>();
@@ -270,8 +272,9 @@ export class GatewayClient {
             clearTimeout(timeout);
             this._helloOk = helloOk;
             this.setState('connected');
-            this.reconnectEnabled = this.options.reconnect;
-            this.reconnectDelayMs = this.options.minReconnectDelayMs;
+    this.reconnectEnabled = this.options.reconnect;
+    this.reconnectAttempts = 0;
+    this.reconnectDelayMs = this.options.minReconnectDelayMs;
             resolve(helloOk);
           }, (err) => {
             handshakeComplete = true;
@@ -367,7 +370,13 @@ export class GatewayClient {
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.setState('error');
+      console.warn('[clawsprawl:client] max reconnect attempts reached');
+      return;
+    }
     this.setState('reconnecting');
+    this.reconnectAttempts++;
     const jitter = Math.floor(Math.random() * 150);
     const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
     this.reconnectTimer = setTimeout(() => {

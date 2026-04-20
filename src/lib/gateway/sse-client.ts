@@ -54,6 +54,8 @@ export class GatewaySseClient {
   private stateListeners = new Set<(state: SseClientState) => void>();
   private _state: SseClientState = 'idle';
   private reconnectDelayMs: number;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 20;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: GatewaySseClientOptions) {
@@ -215,7 +217,12 @@ export class GatewaySseClient {
   /** Schedule a reconnect with exponential backoff. */
   private scheduleReconnect(): void {
     if (!this.options.reconnect || this._state === 'disconnected') return;
-
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this._state = 'error';
+      console.warn('[clawsprawl:sse] max reconnect attempts reached');
+      return;
+    }
+    this.reconnectAttempts++;
     const jitter = Math.floor(Math.random() * 500);
     const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
     this.reconnectTimer = setTimeout(() => {
