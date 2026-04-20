@@ -193,6 +193,8 @@ export class GatewayServerService {
         this.cache.errorCount = this.errorCount;
       }
       if (state === 'connected') {
+        this.reconnectCount = 0;
+        this.cache.reconnectCount = 0;
         this.scheduleRefresh();
       }
     });
