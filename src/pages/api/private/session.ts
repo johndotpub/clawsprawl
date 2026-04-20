@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const session = setPrivateViewSession(cookies);
+  setPrivateViewSession(cookies);
   const expiresInSeconds = getAccessConfig().sessionMaxAgeHours * 3600;
   return new Response(JSON.stringify({ ok: true, expiresInSeconds }), {
     status: 200,
