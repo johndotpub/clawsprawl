@@ -33,6 +33,11 @@ jobs:
       - name: Run lint checks
         run: npm run lint
 
+      - name: Shellcheck
+        run: |
+          command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed, skipping"; exit 0; }
+          shellcheck scripts/*.sh
+
       - name: Run strict QA gates
         run: npm run qa:strict
 
