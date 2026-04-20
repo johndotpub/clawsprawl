@@ -27,6 +27,7 @@ const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#0a0a0a" />
     <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self';" />
     {canonicalUrl && <link rel="canonical" href={canonicalUrl.href} />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
