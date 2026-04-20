@@ -90,7 +90,7 @@ describe('public/private dashboard shaping', () => {
     expect(publicSnapshot.configData).toBeNull();
     expect(publicSnapshot.fileStatus).toBeNull();
     expect(publicSnapshot.sessionDetails).toBeNull();
-    expect(publicSnapshot.usageStatus?.providers?.[0]?.provider).toBe('openai');
+    expect(publicSnapshot.usageStatus).toBeNull();
     expect(publicSnapshot.availableEvents).toEqual([]);
     expect(publicSnapshot.availableMethods).toEqual([]);
     expect(publicSnapshot.serverVersion).toBeNull();

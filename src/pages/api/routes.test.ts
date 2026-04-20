@@ -164,7 +164,7 @@ describe('api routes', () => {
     expect(json.configData).toBeNull();
     expect(json.fileStatus).toBeNull();
     expect(json.sessionDetails).toBeNull();
-    expect(json.usageStatus.providers[0].provider).toBe('openai');
+    expect(json.usageStatus).toBeNull();
     expect(json.agents).toEqual([{ id: 'ceo' }]);
     expect(json.skillsStatus.workspaceDir).toBe('');
     expect(json.skillsStatus.managedSkillsDir).toBe('');
