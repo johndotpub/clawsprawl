@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  checkAuthRateLimit,
   clearPrivateSessionsForTest,
   clearPrivateViewSession,
   getAccessConfig,
@@ -9,6 +10,7 @@ import {
   isValidPrivateToken,
   PRIVATE_SESSION_COOKIE,
   readBearerToken,
+  recordAuthFailure,
   setPrivateViewSession,
 } from './access';
 
@@ -104,5 +106,14 @@ describe('access helpers', () => {
       insecureModeEnabled: true,
     });
     expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
+  });
+
+  it('rate limits after 10 failed auth attempts', () => {
+    expect(checkAuthRateLimit('1.2.3.4')).toBe(true);
+    for (let i = 0; i < 10; i++) {
+      recordAuthFailure('1.2.3.4');
+    }
+    expect(checkAuthRateLimit('1.2.3.4')).toBe(false);
+    expect(checkAuthRateLimit('5.6.7.8')).toBe(true);
   });
 });
