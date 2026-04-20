@@ -116,4 +116,15 @@ describe('access helpers', () => {
     expect(checkAuthRateLimit('1.2.3.4')).toBe(false);
     expect(checkAuthRateLimit('5.6.7.8')).toBe(true);
   });
+
+  it('enforces session store cap', () => {
+    clearPrivateSessionsForTest();
+    for (let i = 0; i < 10_000; i++) {
+      const cookies = createCookies();
+      setPrivateViewSession(cookies as any);
+    }
+    const overflowCookies = createCookies();
+    expect(() => setPrivateViewSession(overflowCookies as any)).toThrow('Session store full');
+    clearPrivateSessionsForTest();
+  });
 });

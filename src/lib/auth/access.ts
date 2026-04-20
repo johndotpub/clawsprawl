@@ -37,6 +37,11 @@ export interface AccessState {
 }
 
 const privateSessions = new Map<string, PrivateSessionRecord>();
+const MAX_SESSIONS = 10_000;
+const SESSION_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+
+const pruneInterval = setInterval(() => pruneExpiredPrivateSessions(), SESSION_PRUNE_INTERVAL_MS);
+pruneInterval.unref?.();
 
 function safeTokenEqual(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -158,6 +163,10 @@ export function hasPrivateViewSession(cookies: AstroCookies): boolean {
 }
 
 export function setPrivateViewSession(cookies: AstroCookies): PrivateSessionRecord {
+  pruneExpiredPrivateSessions();
+  if (privateSessions.size >= MAX_SESSIONS) {
+    throw new Error('Session store full');
+  }
   const { sessionMaxAgeHours } = getAccessConfig();
   const now = Date.now();
   const session: PrivateSessionRecord = {
