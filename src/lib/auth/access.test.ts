@@ -55,6 +55,13 @@ describe('access helpers', () => {
     expect(readBearerToken(new Request('http://localhost', { headers: { authorization: 'Bearer abc' } }))).toBe('abc');
   });
 
+  it('uses constant-time token comparison', () => {
+    expect(isValidPrivateToken('private-token')).toBe(true);
+    expect(isValidPrivateToken('PRIVATE-TOKEN')).toBe(false);
+    expect(isValidPrivateToken('')).toBe(false);
+    expect(isValidPrivateToken(undefined as unknown as string)).toBe(false);
+  });
+
   it('creates and clears a server-backed private session', () => {
     const cookies = createCookies();
     expect(hasPrivateViewSession(cookies as any)).toBe(false);

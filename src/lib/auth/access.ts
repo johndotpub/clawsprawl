@@ -7,7 +7,7 @@
  * - `insecure` mode auto-allows private routes for private-network deployments
  */
 import type { AstroCookies } from 'astro';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 
 export const PRIVATE_SESSION_COOKIE = 'clawsprawl_private_session';
 export const DEFAULT_SESSION_MAX_AGE_HOURS = 24;
@@ -37,6 +37,13 @@ export interface AccessState {
 }
 
 const privateSessions = new Map<string, PrivateSessionRecord>();
+
+function safeTokenEqual(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
 
 function normalizeMode(value: string | undefined): ClawSprawlMode {
   switch (value?.trim().toLowerCase()) {
@@ -107,7 +114,7 @@ export function isPrivateRouteAllowed(cookies: AstroCookies): boolean {
 
 export function isValidPrivateToken(token: string | undefined): boolean {
   const { mode, privateToken } = getAccessConfig();
-  return mode === 'token' && Boolean(privateToken) && token?.trim() === privateToken;
+  return mode === 'token' && Boolean(privateToken) && safeTokenEqual(token?.trim() ?? '', privateToken);
 }
 
 export function readBearerToken(request: Request): string | undefined {
