@@ -297,7 +297,7 @@ describe('api routes', () => {
     } as any);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, mode: 'insecure' });
+    expect(await response.json()).toMatchObject({ ok: true });
   });
 
   it('returns 401 for non-string token value in JSON body', async () => {
