@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import {
   buildConnectParams,
   buildRequest,
+  createRequestIdGenerator,
   isConnectChallenge,
   isEventFrame,
   isRequestFrame,
@@ -287,5 +288,39 @@ describe('gateway protocol helpers', () => {
 
   it('returns null for event frame with non-string event field', () => {
     expect(parseMessage('{"type":"event","event":42,"payload":{}}')).toBeNull();
+  });
+
+  it('returns null for JSON array input', () => {
+    expect(parseMessage('[1,2,3]')).toBeNull();
+  });
+
+  // --- createRequestIdGenerator ---
+
+  describe('createRequestIdGenerator', () => {
+    it('generates incrementing ids within each instance', () => {
+      const gen1 = createRequestIdGenerator();
+      const gen2 = createRequestIdGenerator();
+      const id1a = gen1.next();
+      const id1b = gen1.next();
+      const id2a = gen2.next();
+      expect(id1a).not.toBe(id1b);
+      expect(id2a).toMatch(/^cs-/);
+    });
+
+    it('resets counter via reset()', () => {
+      const gen = createRequestIdGenerator();
+      gen.next();
+      gen.next();
+      gen.reset();
+      const id = gen.next();
+      expect(id).toMatch(/^cs-/);
+    });
+
+    it('produces incrementing ids', () => {
+      const gen = createRequestIdGenerator();
+      const first = gen.next();
+      const second = gen.next();
+      expect(first).not.toBe(second);
+    });
   });
 });

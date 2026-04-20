@@ -18,6 +18,10 @@ export default defineConfig({
         'src/**/types.ts',
         // renderers.ts is a pure re-export file with no logic — coverage is covered by the individual renderer modules
         'src/lib/dashboard/renderers.ts',
+        // middleware.ts requires Astro runtime context (astro:middleware) — tested via e2e
+        'src/middleware.ts',
+        // server-service.ts is a singleton integrating live gateway connections — tested via e2e and integration
+        'src/lib/gateway/server-service.ts',
       ],
       thresholds: {
         lines: 84,
