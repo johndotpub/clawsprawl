@@ -32,7 +32,7 @@ export function muted(text: string): string { return span('text-terminal-muted',
 
 /** Render a semantic status badge chip. */
 export function badge(status: 'ok' | 'error' | 'warn' | 'muted', text: string): string {
-  return span(`status-badge status-${status}`, text);
+  return `<span class="status-badge status-${status}" role="status">${text}</span>`;
 }
 
 /** Wrap row children in the canonical dashboard row container. */
