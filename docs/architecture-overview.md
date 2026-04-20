@@ -9,10 +9,17 @@ For deeper implementation and roadmap detail, see [`technical-design-plan.md`](t
 ```mermaid
 flowchart LR
   Browser[Browser UI\nAstro SSR + dashboard runtime] -->|fetch + SSE| Server[ClawSprawl SSR Server\nAstro + Node adapter]
-  Server -->|WebSocket v3| Gateway[OpenClaw Gateway\nws://localhost:18789/ws]
+  Server -->|WebSocket RPC v3| Gateway[OpenClaw Gateway\nws://localhost:18789/ws]
+  Server -->|SSE event stream| Gateway2[OpenClaw Gateway\nhttp://localhost:18789/event]
   Gateway --> Models[Model Providers\ncloud + local]
   Gateway --> Cron[Cron + automation jobs]
 ```
+
+ClawSprawl maintains **two concurrent connections** to the OpenClaw gateway:
+1. **WebSocket (RPC channel)**: Used for request/response calls (`status`, `agents.list`, `config.get`, etc.) and subscribed event pushes. Managed by `GatewayClient`.
+2. **SSE (event stream)**: Used for the full gateway event bus (`tick`, `health`, `presence`, `agent`, `session.message`, etc.). Managed by `GatewaySseClient`.
+
+This dual-stream architecture ensures RPC calls are never blocked by event throughput, and SSE provides the complete event feed regardless of RPC subscriptions.
 
 ## Request and Session Flow
 
