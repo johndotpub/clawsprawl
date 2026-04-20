@@ -162,5 +162,8 @@ export function isRequestFrame(value: unknown): value is RequestFrame {
  * @returns `true` if `frame` is a `connect.challenge` event.
  */
 export function isConnectChallenge(frame: GatewayFrame): frame is EventFrame & { payload: { nonce: string; ts: number } } {
-  return frame.type === 'event' && (frame as EventFrame).event === 'connect.challenge';
+  if (frame.type !== 'event' || (frame as EventFrame).event !== 'connect.challenge') return false;
+  const payload = (frame as EventFrame).payload;
+  return typeof payload === 'object' && payload !== null
+    && typeof (payload as Record<string, unknown>).nonce === 'string';
 }
