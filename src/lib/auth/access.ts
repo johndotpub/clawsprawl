@@ -113,13 +113,15 @@ export function getAccessState(cookies: AstroCookies): AccessState {
   };
 }
 
-export function getPrivateSessionCookieOptions() {
+export function getPrivateSessionCookieOptions(sessionMaxAgeHours?: number) {
+  const maxAge = (sessionMaxAgeHours ?? getAccessConfig().sessionMaxAgeHours) * 3600;
   return {
     httpOnly: true,
     // Keep secure cookies on in production; allow local HTTP dev ergonomics.
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
     path: '/',
+    maxAge,
   };
 }
 
