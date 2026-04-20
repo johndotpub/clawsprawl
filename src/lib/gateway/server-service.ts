@@ -299,7 +299,7 @@ export class GatewayServerService {
    * @returns A shallow copy of the current {@link DashboardSnapshot}.
    */
   getSnapshot(): DashboardSnapshot {
-    return { ...this.cache };
+    return structuredClone(this.cache);
   }
 
   /**
