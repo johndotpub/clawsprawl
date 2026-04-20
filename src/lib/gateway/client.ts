@@ -50,10 +50,12 @@ export class GatewayClient {
   private state: ConnectionState = 'idle';
   private reconnectEnabled = false;
   private reconnectDelayMs: number;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stateListeners = new Set<StateListener>();
   private eventListeners = new Set<GatewayEventListener>();
   private pending = new Map<string, PendingRequest>();
   private activeConnectUrl: string;
+  private connectInFlight: Promise<HelloOk> | null = null;
 
   /** Populated after a successful handshake. */
   private _helloOk: HelloOk | null = null;
@@ -102,6 +104,8 @@ export class GatewayClient {
    * @returns A promise that resolves with the {@link HelloOk} handshake payload.
    */
   async connect(): Promise<HelloOk> {
+    if (this.connectInFlight) return this.connectInFlight;
+
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       if (this._helloOk) {
         return this._helloOk;
@@ -110,6 +114,15 @@ export class GatewayClient {
 
     this.setState(this.state === 'idle' ? 'connecting' : 'reconnecting');
 
+    this.connectInFlight = this.openSocketWithFallback();
+    try {
+      return await this.connectInFlight;
+    } finally {
+      this.connectInFlight = null;
+    }
+  }
+
+  private async openSocketWithFallback(): Promise<HelloOk> {
     try {
       return await this.openSocket(this.activeConnectUrl);
     } catch (err) {
@@ -130,6 +143,10 @@ export class GatewayClient {
     this.reconnectEnabled = false;
     this._helloOk = null;
     this.clearPending(new Error('Disconnected'));
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.socket) {
       this.socket.close();
       this.socket = null;
@@ -353,7 +370,8 @@ export class GatewayClient {
     this.setState('reconnecting');
     const jitter = Math.floor(Math.random() * 150);
     const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect().catch((err) => {
         console.warn('[clawsprawl:client] reconnect failed:', err);
         this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.options.maxReconnectDelayMs);
