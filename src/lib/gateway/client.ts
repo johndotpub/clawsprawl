@@ -1,6 +1,7 @@
 import {
   buildConnectParams,
   buildRequest,
+  createRequestIdGenerator,
   isConnectChallenge,
   isEventFrame,
   isResponseFrame,
@@ -58,6 +59,7 @@ export class GatewayClient {
   private pending = new Map<string, PendingRequest>();
   private activeConnectUrl: string;
   private connectInFlight: Promise<HelloOk> | null = null;
+  private requestIdGenerator = createRequestIdGenerator();
 
   /** Populated after a successful handshake. */
   private _helloOk: HelloOk | null = null;
@@ -204,7 +206,7 @@ export class GatewayClient {
       throw new Error('Socket is not connected');
     }
 
-    const request = buildRequest(method, params);
+    const request = buildRequest(method, params, this.requestIdGenerator);
     const payload = JSON.stringify(request);
 
     return new Promise<TResult>((resolve, reject) => {
@@ -306,7 +308,7 @@ export class GatewayClient {
     // Step 1: Gateway sends connect.challenge
     if (isConnectChallenge(frame)) {
       const connectParams = buildConnectParams(this.options);
-      const connectReq = buildRequest('connect', connectParams);
+      const connectReq = buildRequest('connect', connectParams, this.requestIdGenerator);
 
       // Store pending so we can match the response
       this.pending.set(connectReq.id, {
