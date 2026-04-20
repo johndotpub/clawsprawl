@@ -484,10 +484,8 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     const response = await fetch(privateSessionApiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ token }),
     });
 
     if (!response.ok) {
