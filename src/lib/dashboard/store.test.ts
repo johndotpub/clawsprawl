@@ -422,4 +422,80 @@ describe('dashboard store', () => {
     expect(lastState.sessionDetails?.[0]?.key).toBe('s1');
   });
 
+  // --- Ring buffer overflow with pushEvent ---
+
+  it('ring buffer correctly handles overflow', () => {
+    const store = new DashboardStore(5);
+    for (let i = 0; i < 8; i += 1) {
+      store.pushEvent({ type: 'event', event: `evt-${i}`, payload: {} });
+    }
+
+    const events = store.getSnapshot().events;
+    expect(events).toHaveLength(5);
+    expect(events[0]?.event).toBe('evt-7');
+    expect(events[4]?.event).toBe('evt-3');
+  });
+
+  // --- maxDailyEntries cap on usageCost.daily ---
+
+  it('caps usageCost.daily to maxDailyEntries', () => {
+    const store = new DashboardStore();
+    const daily = Array.from({ length: 400 }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      input: 100,
+      output: 50,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 150,
+      totalCost: 0.01,
+    }));
+
+    store.setUsageCost({
+      updatedAt: Date.now(),
+      days: 400,
+      daily,
+      totals: { input: 40000, output: 20000, cacheRead: 0, cacheWrite: 0, totalTokens: 60000, totalCost: 4 },
+    });
+
+    expect(store.getSnapshot().usageCost?.daily).toHaveLength(365);
+  });
+
+  it('caps usageCost.daily in applySnapshot', () => {
+    const store = new DashboardStore();
+    const daily = Array.from({ length: 400 }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      input: 100,
+      output: 50,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 150,
+      totalCost: 0.01,
+    }));
+
+    store.applySnapshot({
+      usageCost: {
+        updatedAt: Date.now(),
+        days: 400,
+        daily,
+        totals: { input: 40000, output: 20000, cacheRead: 0, cacheWrite: 0, totalTokens: 60000, totalCost: 4 },
+      },
+    });
+
+    expect(store.getSnapshot().usageCost?.daily).toHaveLength(365);
+  });
+
+  it('does not cap short usageCost.daily', () => {
+    const store = new DashboardStore();
+    const daily = [{ date: '2026-04-01', input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, totalCost: 0 }];
+
+    store.setUsageCost({
+      updatedAt: Date.now(),
+      days: 1,
+      daily,
+      totals: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, totalCost: 0 },
+    });
+
+    expect(store.getSnapshot().usageCost?.daily).toHaveLength(1);
+  });
+
 });
