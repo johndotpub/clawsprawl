@@ -86,7 +86,7 @@ function parseSessionMaxAgeHours(value: string | undefined): number {
   if (!Number.isFinite(numeric) || numeric <= 0) {
     return DEFAULT_SESSION_MAX_AGE_HOURS;
   }
-  return Math.min(MAX_SESSION_MAX_AGE_HOURS, Math.floor(numeric));
+  return Math.min(MAX_SESSION_MAX_AGE_HOURS, Math.round(numeric));
 }
 
 export function getAccessConfig(): AccessConfig {
