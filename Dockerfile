@@ -32,4 +32,4 @@ COPY package.json package-lock.json ./
 USER node
 EXPOSE 4321
 
-CMD ["node", "dist/server/entry.mjs"]
+CMD ["node", "--allow-fs=/app", "--allow-fs=/tmp", "--allow-net", "dist/server/entry.mjs"]
