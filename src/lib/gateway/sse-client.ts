@@ -103,7 +103,11 @@ export class GatewaySseClient {
       this.reconnectDelayMs = this.options.minReconnectDelayMs;
 
       // Read the stream in the background
-      void this.readStream(response.body);
+      void this.readStream(response.body).catch((err) => {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('[clawsprawl:sse] readStream error:', err);
+        }
+      });
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       console.warn('[clawsprawl:sse] connection failed:', err);
