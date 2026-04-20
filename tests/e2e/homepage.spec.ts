@@ -57,6 +57,8 @@ test('mobile layout does not introduce horizontal overflow', async ({ browser })
   const page = await context.newPage();
 
   await page.goto('/');
+  await page.waitForSelector('[data-testid="dashboard"]', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(500);
 
   const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 
