@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import {
   checkAuthRateLimit,
   clearPrivateViewSession,
+  getAccessConfig,
   getAccessState,
   isPrivateViewConfigured,
   isValidPrivateToken,
@@ -55,7 +56,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   const session = setPrivateViewSession(cookies);
-  return new Response(JSON.stringify({ ok: true, expiresAt: session.expiresAt }), {
+  const expiresInSeconds = getAccessConfig().sessionMaxAgeHours * 3600;
+  return new Response(JSON.stringify({ ok: true, expiresInSeconds }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
