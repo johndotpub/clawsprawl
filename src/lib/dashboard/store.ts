@@ -135,6 +135,9 @@ export class DashboardStore {
   private listeners = new Set<StateListener>();
   private maxEvents: number;
   private lastNotifiedAt = 0;
+  private eventBuffer: EventFrame[] = [];
+  private eventHead = 0;
+  private eventCount = 0;
 
   /** Minimum interval between `lastUpdatedAt` timestamp bumps (ms). */
   private static readonly UPDATE_DEBOUNCE_MS = 1_000;
@@ -152,7 +155,7 @@ export class DashboardStore {
 
   /** Return the current immutable state snapshot. */
   getSnapshot(): DashboardState {
-    return this.state;
+    return { ...this.state, events: this.getOrderedEvents() };
   }
 
   /** Update the WebSocket connection state, incrementing counters as needed. */
@@ -276,8 +279,14 @@ export class DashboardStore {
 
   /** Push a single event to the front of the ring buffer. */
   pushEvent(event: EventFrame): void {
-    const nextEvents = [event, ...this.state.events].slice(0, this.maxEvents);
-    this.update({ events: nextEvents });
+    if (this.eventCount < this.maxEvents) {
+      this.eventBuffer.push(event);
+      this.eventCount += 1;
+    } else {
+      this.eventBuffer[this.eventHead] = event;
+      this.eventHead = (this.eventHead + 1) % this.maxEvents;
+    }
+    this.update({ events: this.getOrderedEvents() });
   }
 
   /** Push multiple events to the front of the ring buffer (no-op for empty array). */
@@ -285,8 +294,27 @@ export class DashboardStore {
     if (events.length === 0) {
       return;
     }
-    const nextEvents = [...events, ...this.state.events].slice(0, this.maxEvents);
-    this.update({ events: nextEvents });
+    for (const event of events) {
+      if (this.eventCount < this.maxEvents) {
+        this.eventBuffer.push(event);
+        this.eventCount += 1;
+      } else {
+        this.eventBuffer[this.eventHead] = event;
+        this.eventHead = (this.eventHead + 1) % this.maxEvents;
+      }
+    }
+    this.update({ events: this.getOrderedEvents() });
+  }
+
+  private getOrderedEvents(): EventFrame[] {
+    if (this.eventCount < this.maxEvents) {
+      return [...this.eventBuffer].reverse();
+    }
+    const result: EventFrame[] = new Array(this.maxEvents);
+    for (let i = 0; i < this.maxEvents; i++) {
+      result[i] = this.eventBuffer[(this.eventHead + i) % this.maxEvents];
+    }
+    return result.reverse();
   }
 
   /**
