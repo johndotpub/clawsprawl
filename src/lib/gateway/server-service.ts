@@ -483,6 +483,24 @@ export class GatewayServerService {
       this.refreshInFlight = false;
     }
   }
+
+  /** Tear down all connections, timers, and listeners. Call on server shutdown. */
+  destroy(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    if (this.invalidationTimer) {
+      clearTimeout(this.invalidationTimer);
+      this.invalidationTimer = null;
+    }
+    this.client.disconnect();
+    this.sseClient.disconnect();
+    this.snapshotListeners.clear();
+    this.eventListeners.clear();
+    _instance = null;
+    this.initialized = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,4 +533,12 @@ export async function initializeService(): Promise<GatewayServerService> {
   const service = getServerService();
   await service.initialize();
   return service;
+}
+
+/** Reset the singleton for tests or forced re-initialization. */
+export function resetServerService(): void {
+  if (_instance) {
+    _instance.destroy();
+  }
+  _instance = null;
 }
