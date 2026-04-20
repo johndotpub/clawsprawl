@@ -286,26 +286,26 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       elements.eventListEl.innerHTML = renderEventRows(state, enabledFilters);
     }
 
-    const panelRenderers: Record<MetadataPanelKey, (s: typeof state) => string> = {
-      cronListEl: renderCronRows,
-      providerListEl: renderProviderRows,
-      sessionListEl: renderSessionRows,
-      modelListEl: renderModelRows,
-      healthListEl: renderHealthRows,
-      statusListEl: renderStatusRows,
-      presenceListEl: renderPresenceRows,
-      usageCostListEl: renderUsageCostRows,
-      toolCatalogListEl: renderToolCatalogRows,
-      skillsListEl: renderSkillsRows,
-      channelsStatusListEl: renderChannelsStatusRows,
-      cronSchedulerListEl: renderCronSchedulerRows,
-      memoryStatusListEl: renderMemoryStatusRows,
-      configListEl: renderConfigRows,
-      permissionActivityListEl: renderPermissionActivityRows,
-      toolExecutionListEl: renderToolExecutionRows,
-      fileTrackingListEl: renderFileTrackingRows,
-      sessionDetailListEl: renderSessionDetailRows,
-    };
+  const panelRenderers: Record<MetadataPanelKey, (s: typeof state) => string> = {
+    cronListEl: renderCronRows,
+    providerListEl: renderProviderRows,
+    sessionListEl: renderSessionRows,
+    modelListEl: renderModelRows,
+    healthListEl: renderHealthRows,
+    statusListEl: renderStatusRows,
+    presenceListEl: renderPresenceRows,
+    usageCostListEl: renderUsageCostRows,
+    toolCatalogListEl: renderToolCatalogRows,
+    skillsListEl: renderSkillsRows,
+    channelsStatusListEl: renderChannelsStatusRows,
+    cronSchedulerListEl: renderCronSchedulerRows,
+    memoryStatusListEl: renderMemoryStatusRows,
+    configListEl: renderConfigRows,
+    permissionActivityListEl: renderPermissionActivityRows,
+    toolExecutionListEl: renderToolExecutionRows,
+    fileTrackingListEl: renderFileTrackingRows,
+    sessionDetailListEl: renderSessionDetailRows,
+  };
 
     const panelCache = new Map<string, string>();
 
