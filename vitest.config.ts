@@ -16,6 +16,7 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/**/types.ts',
+        // renderers.ts is a pure re-export file with no logic — coverage is covered by the individual renderer modules
         'src/lib/dashboard/renderers.ts',
       ],
       thresholds: {
