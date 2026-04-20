@@ -313,6 +313,10 @@ export class GatewayClient {
       // Store pending so we can match the response
       this.pending.set(connectReq.id, {
         resolve: (payload) => {
+          if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).type !== 'hello-ok') {
+            onError(new Error('Invalid HelloOk response from gateway'));
+            return;
+          }
           const helloOk = payload as HelloOk;
           onSuccess(helloOk);
         },
