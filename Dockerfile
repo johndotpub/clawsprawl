@@ -23,9 +23,12 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=4321
 
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY package.json package-lock.json ./
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node package.json package-lock.json ./
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:4321/api/public/dashboard.json').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 USER node
 EXPOSE 4321
