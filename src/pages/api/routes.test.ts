@@ -248,7 +248,7 @@ describe('api routes', () => {
     const cookies = createCookies();
 
     const unauthorized = await postPrivateSession({
-      request: new Request('http://localhost/api/private/session', { method: 'POST', body: JSON.stringify({ token: 'bad' }) }),
+      request: new Request('http://localhost/api/private/session', { method: 'POST', body: JSON.stringify({ token: 'bad' }), headers: { 'Content-Type': 'application/json' } }),
       cookies,
     } as any);
     expect(unauthorized.status).toBe(401);
