@@ -57,6 +57,7 @@ export class GatewaySseClient {
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 20;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastEventId = '';
 
   constructor(options: GatewaySseClientOptions) {
     this.options = {
@@ -89,8 +90,8 @@ export class GatewaySseClient {
       if (this.options.token) {
         headers['Authorization'] = `Bearer ${this.options.token}`;
       }
-      if (lastEventId) {
-        headers['Last-Event-ID'] = lastEventId;
+      if (this.lastEventId) {
+        headers['Last-Event-ID'] = this.lastEventId;
       }
 
       const response = await fetch(this.options.url, {
@@ -164,7 +165,6 @@ export class GatewaySseClient {
     let currentEvent = '';
     let currentData = '';
     let currentId = '';
-    let lastEventId = '';
 
     try {
       while (true) {
@@ -188,7 +188,7 @@ export class GatewaySseClient {
               this.emitParsedEvent(currentEvent, currentData, currentId);
             }
             if (currentId) {
-              lastEventId = currentId;
+              this.lastEventId = currentId;
             }
             currentEvent = '';
             currentData = '';
