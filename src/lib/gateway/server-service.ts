@@ -181,6 +181,9 @@ export class GatewayServerService {
 
     this.client.onStateChange((state) => {
       this.cache.connectionState = state;
+      if (state === 'reconnecting' || state === 'disconnected' || state === 'error') {
+        this.cache.stale = true;
+      }
       if (state === 'reconnecting') {
         this.reconnectCount += 1;
         this.cache.reconnectCount = this.reconnectCount;
@@ -475,10 +478,10 @@ export class GatewayServerService {
       this.cache.lastUpdatedAt = now;
       this.cache.lastSuccessfulSnapshotAt = now;
       this.cache.stale = false;
-
       this.notifySnapshotUpdated();
     } catch (err) {
       console.warn('[clawsprawl:server] data refresh failed:', err);
+      this.cache.stale = true;
     } finally {
       this.refreshInFlight = false;
     }
