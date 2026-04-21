@@ -54,7 +54,10 @@ export class GatewaySseClient {
   private stateListeners = new Set<(state: SseClientState) => void>();
   private _state: SseClientState = 'idle';
   private reconnectDelayMs: number;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 20;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastEventId = '';
 
   constructor(options: GatewaySseClientOptions) {
     this.options = {
@@ -87,6 +90,9 @@ export class GatewaySseClient {
       if (this.options.token) {
         headers['Authorization'] = `Bearer ${this.options.token}`;
       }
+      if (this.lastEventId) {
+        headers['Last-Event-ID'] = this.lastEventId;
+      }
 
       const response = await fetch(this.options.url, {
         headers,
@@ -101,7 +107,11 @@ export class GatewaySseClient {
       this.reconnectDelayMs = this.options.minReconnectDelayMs;
 
       // Read the stream in the background
-      void this.readStream(response.body);
+      void this.readStream(response.body).catch((err) => {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('[clawsprawl:sse] readStream error:', err);
+        }
+      });
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       console.warn('[clawsprawl:sse] connection failed:', err);
@@ -154,6 +164,7 @@ export class GatewaySseClient {
     let buffer = '';
     let currentEvent = '';
     let currentData = '';
+    let currentId = '';
 
     try {
       while (true) {
@@ -161,21 +172,27 @@ export class GatewaySseClient {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split(/\r?\n/);
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           if (line.startsWith('event:')) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith('data:')) {
-            currentData += line.slice(5).trim();
+            currentData += (currentData ? '\n' : '') + line.slice(5).trimStart();
+          } else if (line.startsWith('id:')) {
+            currentId = line.slice(3).trim();
           } else if (line === '') {
             // End of event
             if (currentData) {
-              this.emitParsedEvent(currentEvent, currentData);
+              this.emitParsedEvent(currentEvent, currentData, currentId);
+            }
+            if (currentId) {
+              this.lastEventId = currentId;
             }
             currentEvent = '';
             currentData = '';
+            currentId = '';
           }
           // Ignore comment lines (starting with ':') and other lines
         }
@@ -195,17 +212,30 @@ export class GatewaySseClient {
   }
 
   /** Parse a raw SSE event and emit it as an EventFrame to listeners. */
-  private emitParsedEvent(eventName: string, data: string): void {
+  private emitParsedEvent(eventName: string, data: string, eventId: string): void {
     try {
       const parsed = JSON.parse(data);
-      const frame: EventFrame = {
-        type: 'event',
-        event: eventName || (typeof parsed === 'object' && parsed?.event ? String(parsed.event) : 'unknown'),
-        payload: typeof parsed === 'object' && parsed?.payload !== undefined ? parsed.payload : parsed,
-        ...(typeof parsed === 'object' && typeof parsed?.seq === 'number' ? { seq: parsed.seq } : {}),
-      };
-      for (const listener of this.listeners) {
-        try { listener(frame); } catch { /* swallow listener errors */ }
+      if (typeof parsed === 'object' && parsed !== null) {
+        const frame: EventFrame = {
+          type: 'event',
+          event: eventName || (typeof parsed.event === 'string' ? parsed.event : 'unknown'),
+          payload: parsed.payload !== undefined ? parsed.payload : parsed,
+          ...(typeof parsed.seq === 'number' ? { seq: parsed.seq } : {}),
+          ...(eventId ? { _sseId: eventId } : {}),
+        };
+        for (const listener of this.listeners) {
+          try { listener(frame); } catch { /* swallow listener errors */ }
+        }
+      } else {
+        const frame: EventFrame = {
+          type: 'event',
+          event: eventName || 'unknown',
+          payload: parsed,
+          ...(eventId ? { _sseId: eventId } : {}),
+        };
+        for (const listener of this.listeners) {
+          try { listener(frame); } catch { /* swallow listener errors */ }
+        }
       }
     } catch {
       /* Ignore non-JSON data lines (keepalives, comments) */
@@ -215,7 +245,12 @@ export class GatewaySseClient {
   /** Schedule a reconnect with exponential backoff. */
   private scheduleReconnect(): void {
     if (!this.options.reconnect || this._state === 'disconnected') return;
-
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this._state = 'error';
+      console.warn('[clawsprawl:sse] max reconnect attempts reached');
+      return;
+    }
+    this.reconnectAttempts++;
     const jitter = Math.floor(Math.random() * 500);
     const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
     this.reconnectTimer = setTimeout(() => {

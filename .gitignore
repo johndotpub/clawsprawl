@@ -36,3 +36,5 @@ coverage/
 
 # local profile overrides (keep private)
 src/config/profiles/*.local.ts
+*.swp
+*.swo

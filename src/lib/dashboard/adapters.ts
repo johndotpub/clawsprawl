@@ -120,7 +120,6 @@ export function normalizeAgents(payload: unknown): AgentSummary[] {
   return source
     .map((entry) => asRecord(entry))
     .map((entry, index) => ({
-      ...entry,
       id: asString(entry.id, `agent-${index}`),
       ...optionalString('name', entry.name),
       ...(entry.model !== undefined ? { model: entry.model } : {}),
@@ -781,8 +780,20 @@ export function formatTokenCount(tokens: number, trimZero = false): string {
  * @param payload - Raw gateway config response to normalize.
  * @returns Normalized config response object.
  */
+const CONFIG_SAFE_KEYS = new Set([
+  'model', 'temperature', 'maxTokens', 'provider', 'region', 'apiKey', 'baseUrl',
+  'topP', 'topK', 'frequencyPenalty', 'presencePenalty', 'stop', 'systemPrompt',
+  'responseFormat', 'seed', 'logprobs', 'tools', 'toolChoice', 'parallelToolCalls',
+  'port', 'debug', 'agents', 'host', 'version', 'uptime', 'pid', 'status',
+]);
+
 export function normalizeConfigData(payload: unknown): ConfigResponse {
-  return asRecord(payload) as ConfigResponse;
+  const record = asRecord(payload);
+  const safe: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (CONFIG_SAFE_KEYS.has(key)) safe[key] = value;
+  }
+  return safe as ConfigResponse;
 }
 
 // ---------------------------------------------------------------------------

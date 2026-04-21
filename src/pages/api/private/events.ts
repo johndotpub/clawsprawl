@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { createPrivateAuthRequiredResponse, isPrivateRouteAllowed } from '../../../lib/auth/access';
+import { createPrivateAuthRequiredResponse, hasPrivateViewSession, isPrivateRouteAllowed } from '../../../lib/auth/access';
 import { buildPrivateEvent } from '../../../lib/dashboard/public-private';
 import { getServerService, initializeService } from '../../../lib/gateway/server-service';
 
@@ -48,6 +48,13 @@ export const GET: APIRoute = async ({ cookies }) => {
         send('ping', { ts: Date.now() });
       }, KEEPALIVE_INTERVAL_MS);
 
+      const sessionCheck = setInterval(() => {
+        if (!hasPrivateViewSession(cookies)) {
+          cleanup?.();
+          controller.close();
+        }
+      }, 60_000);
+
       send('snapshot-updated', {
         connectionState: service.connectionState,
         ts: Date.now(),
@@ -58,6 +65,7 @@ export const GET: APIRoute = async ({ cookies }) => {
         unsubscribe();
         unsubscribeSnapshot();
         clearInterval(keepalive);
+        clearInterval(sessionCheck);
       };
     },
     cancel() {
@@ -70,7 +78,6 @@ export const GET: APIRoute = async ({ cookies }) => {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
     },
   });

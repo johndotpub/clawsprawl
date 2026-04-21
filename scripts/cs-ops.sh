@@ -115,10 +115,12 @@ parse_options() {
 
 load_env() {
   if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%%#*}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+      eval "export $line"
+    done < "$ENV_FILE"
   fi
 
   if [[ -n "$PROFILE_OVERRIDE" ]]; then
@@ -203,13 +205,11 @@ tmux_up() {
   if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "tmux session already exists: $SESSION_NAME"
   else
-    local token_env=""
-    if [[ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
-      token_env="export OPENCLAW_GATEWAY_TOKEN=\"$OPENCLAW_GATEWAY_TOKEN\" && "
-    fi
-
-    tmux new-session -d -s "$SESSION_NAME" -n app "cd \"$ROOT_DIR\" && ${token_env}export PUBLIC_MAINFRAME_PROFILE=\"$PUBLIC_MAINFRAME_PROFILE\" && npm run dev"
+    tmux new-session -d -s "$SESSION_NAME" -n app "cd \"$ROOT_DIR\" && export PUBLIC_MAINFRAME_PROFILE=\"$PUBLIC_MAINFRAME_PROFILE\" && npm run dev"
     tmux new-window -t "$SESSION_NAME" -n shell "cd \"$ROOT_DIR\""
+    if [[ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
+      tmux set-environment -t "$SESSION_NAME" OPENCLAW_GATEWAY_TOKEN "$OPENCLAW_GATEWAY_TOKEN"
+    fi
   fi
 
   if [[ "$ATTACH" -eq 1 ]]; then

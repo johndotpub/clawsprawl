@@ -181,6 +181,9 @@ export class GatewayServerService {
 
     this.client.onStateChange((state) => {
       this.cache.connectionState = state;
+      if (state === 'reconnecting' || state === 'disconnected' || state === 'error') {
+        this.cache.stale = true;
+      }
       if (state === 'reconnecting') {
         this.reconnectCount += 1;
         this.cache.reconnectCount = this.reconnectCount;
@@ -190,6 +193,8 @@ export class GatewayServerService {
         this.cache.errorCount = this.errorCount;
       }
       if (state === 'connected') {
+        this.reconnectCount = 0;
+        this.cache.reconnectCount = 0;
         this.scheduleRefresh();
       }
     });
@@ -294,7 +299,7 @@ export class GatewayServerService {
    * @returns A shallow copy of the current {@link DashboardSnapshot}.
    */
   getSnapshot(): DashboardSnapshot {
-    return { ...this.cache };
+    return structuredClone(this.cache);
   }
 
   /**
@@ -475,13 +480,31 @@ export class GatewayServerService {
       this.cache.lastUpdatedAt = now;
       this.cache.lastSuccessfulSnapshotAt = now;
       this.cache.stale = false;
-
       this.notifySnapshotUpdated();
     } catch (err) {
       console.warn('[clawsprawl:server] data refresh failed:', err);
+      this.cache.stale = true;
     } finally {
       this.refreshInFlight = false;
     }
+  }
+
+  /** Tear down all connections, timers, and listeners. Call on server shutdown. */
+  destroy(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    if (this.invalidationTimer) {
+      clearTimeout(this.invalidationTimer);
+      this.invalidationTimer = null;
+    }
+    this.client.disconnect();
+    this.sseClient.disconnect();
+    this.snapshotListeners.clear();
+    this.eventListeners.clear();
+    _instance = null;
+    this.initialized = false;
   }
 }
 
@@ -515,4 +538,12 @@ export async function initializeService(): Promise<GatewayServerService> {
   const service = getServerService();
   await service.initialize();
   return service;
+}
+
+/** Reset the singleton for tests or forced re-initialization. */
+export function resetServerService(): void {
+  if (_instance) {
+    _instance.destroy();
+  }
+  _instance = null;
 }

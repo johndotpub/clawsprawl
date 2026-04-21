@@ -268,6 +268,11 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (eventDebounceTimer) { clearTimeout(eventDebounceTimer); eventDebounceTimer = null; }
     if (publicEventSource) { publicEventSource.close(); publicEventSource = null; }
     if (privateEventSource) { privateEventSource.close(); privateEventSource = null; }
+    unsubscribeStore();
+    if (elements.eventFiltersEl) elements.eventFiltersEl.removeEventListener('change', onFilterChange);
+    if (elements.retryButtonEl) elements.retryButtonEl.removeEventListener('click', onRetryClick);
+    if (elements.privateViewFormEl) elements.privateViewFormEl.removeEventListener('submit', onFormSubmit);
+    if (elements.privateViewLockEl) elements.privateViewLockEl.removeEventListener('click', onLockClick);
   });
 
   const renderState = (state: DashboardState): void => {
@@ -286,36 +291,53 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       elements.eventListEl.innerHTML = renderEventRows(state, enabledFilters);
     }
 
-    const panelRenderers: Record<MetadataPanelKey, (s: typeof state) => string> = {
-      cronListEl: renderCronRows,
-      providerListEl: renderProviderRows,
-      sessionListEl: renderSessionRows,
-      modelListEl: renderModelRows,
-      healthListEl: renderHealthRows,
-      statusListEl: renderStatusRows,
-      presenceListEl: renderPresenceRows,
-      usageCostListEl: renderUsageCostRows,
-      toolCatalogListEl: renderToolCatalogRows,
-      skillsListEl: renderSkillsRows,
-      channelsStatusListEl: renderChannelsStatusRows,
-      cronSchedulerListEl: renderCronSchedulerRows,
-      memoryStatusListEl: renderMemoryStatusRows,
-      configListEl: renderConfigRows,
-      permissionActivityListEl: renderPermissionActivityRows,
-      toolExecutionListEl: renderToolExecutionRows,
-      fileTrackingListEl: renderFileTrackingRows,
-      sessionDetailListEl: renderSessionDetailRows,
+  const panelRenderers: Record<MetadataPanelKey, (s: typeof state) => string> = {
+    cronListEl: renderCronRows,
+    providerListEl: renderProviderRows,
+    sessionListEl: renderSessionRows,
+    modelListEl: renderModelRows,
+    healthListEl: renderHealthRows,
+    statusListEl: renderStatusRows,
+    presenceListEl: renderPresenceRows,
+    usageCostListEl: renderUsageCostRows,
+    toolCatalogListEl: renderToolCatalogRows,
+    skillsListEl: renderSkillsRows,
+    channelsStatusListEl: renderChannelsStatusRows,
+    cronSchedulerListEl: renderCronSchedulerRows,
+    memoryStatusListEl: renderMemoryStatusRows,
+    configListEl: renderConfigRows,
+    permissionActivityListEl: renderPermissionActivityRows,
+    toolExecutionListEl: renderToolExecutionRows,
+    fileTrackingListEl: renderFileTrackingRows,
+    sessionDetailListEl: renderSessionDetailRows,
+  };
+
+    const panelCache = new Map<string, string>();
+
+    const safeSetInnerHTML = (el: HTMLElement | null, html: string, cacheKey: string): void => {
+      if (!el) return;
+      const prev = panelCache.get(cacheKey);
+      if (prev === html) return;
+      panelCache.set(cacheKey, html);
+      el.innerHTML = html;
     };
 
     for (const panel of PUBLIC_DASHBOARD_PANELS) {
       const el = elements[panel.key];
-      if (el) (el as HTMLElement).innerHTML = panelRenderers[panel.key](state);
+      if (el) {
+        try {
+          safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
+        } catch (err) {
+          console.error(`Panel ${panel.key} render failed:`, err);
+          (el as HTMLElement).innerHTML = '<li class="text-red-400">Panel render error</li>';
+        }
+      }
     }
 
     if (privateViewEnabled) {
       for (const panel of PRIVATE_DASHBOARD_PANELS) {
         const el = elements[panel.key];
-        if (el) (el as HTMLElement).innerHTML = panelRenderers[panel.key](state);
+        if (el) safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
       }
     }
 
@@ -371,17 +393,19 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     }
   };
 
+  const onFilterChange = () => {
+    const selected = Array.from(elements.eventFiltersEl?.querySelectorAll('input[type="checkbox"]:checked') ?? []).map(
+      (node) => node.getAttribute('value'),
+    );
+    enabledFilters = new Set(selected.filter((value): value is string => Boolean(value)));
+    renderState(store.getSnapshot());
+  };
+
   if (elements.eventFiltersEl) {
-    elements.eventFiltersEl.addEventListener('change', () => {
-      const selected = Array.from(elements.eventFiltersEl?.querySelectorAll('input[type="checkbox"]:checked') ?? []).map(
-        (node) => node.getAttribute('value'),
-      );
-      enabledFilters = new Set(selected.filter((value): value is string => Boolean(value)));
-      renderState(store.getSnapshot());
-    });
+    elements.eventFiltersEl.addEventListener('change', onFilterChange);
   }
 
-  store.subscribe(renderState);
+  const unsubscribeStore = store.subscribe(renderState);
 
   async function fetchSnapshot(url: string, onAuthFailure?: () => void): Promise<DashboardSnapshotPayload | null> {
     const response = await fetch(url);
@@ -394,7 +418,12 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       store.setConnectionState('error');
       return null;
     }
-    return await response.json() as DashboardSnapshotPayload;
+    const data = await response.json();
+    if (typeof data !== 'object' || data === null || !('connectionState' in data)) {
+      console.warn('[clawsprawl] dashboard fetch returned invalid shape:', url);
+      return null;
+    }
+    return data as DashboardSnapshotPayload;
   }
 
   async function fetchDashboard(): Promise<void> {
@@ -422,7 +451,8 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
         ? `Connected via SSR. ${panelCount} panels visible with private view unlocked.`
         : `Connected via SSR. ${panelCount} public panels visible.`);
     } catch (err) {
-      console.warn('[clawsprawl] dashboard fetch error:', err);
+      console.error('[clawsprawl] dashboard fetch error:', err);
+      store.setConnectionState('error');
       store.setConnectionState('error');
       setText(elements.messageEl, 'Failed to fetch dashboard data from server. Retrying...');
     } finally {
@@ -467,10 +497,8 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     const response = await fetch(privateSessionApiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ token }),
     });
 
     if (!response.ok) {
@@ -497,28 +525,28 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     scheduleStaleChecks();
   }
 
+  const onRetryClick = () => { void bootstrap(); };
+  const onFormSubmit = (event: Event) => {
+    event.preventDefault();
+    const token = elements.privateViewTokenEl?.value?.trim() ?? '';
+    if (!privateConfigured || token.length === 0) {
+      setText(elements.messageEl, 'Enter a valid bearer token to unlock private view.');
+      return;
+    }
+    void unlockPrivateView(token);
+  };
+  const onLockClick = () => { void lockPrivateView(); };
+
   if (elements.retryButtonEl) {
-    elements.retryButtonEl.addEventListener('click', () => {
-      void bootstrap();
-    });
+    elements.retryButtonEl.addEventListener('click', onRetryClick);
   }
 
   if (elements.privateViewFormEl && elements.privateViewTokenEl) {
-    elements.privateViewFormEl.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const token = elements.privateViewTokenEl?.value?.trim() ?? '';
-      if (!privateConfigured || token.length === 0) {
-        setText(elements.messageEl, 'Enter a valid bearer token to unlock private view.');
-        return;
-      }
-      void unlockPrivateView(token);
-    });
+    elements.privateViewFormEl.addEventListener('submit', onFormSubmit);
   }
 
   if (elements.privateViewLockEl) {
-    elements.privateViewLockEl.addEventListener('click', () => {
-      void lockPrivateView();
-    });
+    elements.privateViewLockEl.addEventListener('click', onLockClick);
   }
 
   void bootstrap();

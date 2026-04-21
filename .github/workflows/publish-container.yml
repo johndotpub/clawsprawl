@@ -38,6 +38,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref_name, 'v') }}
 
       - name: Build and push container image
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -47,3 +48,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true

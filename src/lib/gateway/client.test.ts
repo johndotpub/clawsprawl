@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GatewayClient } from './client';
+import { GatewayClient, verifyGatewayNonce } from './client';
 import { resetRequestCounter } from './protocol';
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ describe('gateway client', () => {
   });
 
   it('times out rpc requests when no response arrives', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 100 });
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000, rpcTimeoutMs: 100 });
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
@@ -587,5 +587,58 @@ describe('gateway client', () => {
     // that's not in the allowed transitions. Let's verify the client stays
     // stable — 'idle' is not reachable from 'disconnected'.
     expect(states).not.toContain('error');
+  });
+
+  // --- verifyGatewayNonce stub ---
+
+  it('always returns true from verifyGatewayNonce stub', () => {
+    expect(verifyGatewayNonce('any-nonce')).toBe(true);
+    expect(verifyGatewayNonce('')).toBe(true);
+  });
+
+  // --- ws.send() error handling in call() ---
+
+  it('rejects RPC when ws.send() throws on connected socket', async () => {
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000, rpcTimeoutMs: 500 });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.completeHandshake();
+    await connectPromise;
+
+    socket.send = () => { throw new Error('not ready'); };
+    await expect(client.call('status')).rejects.toThrow('not ready');
+  });
+
+  // --- HelloOk validation ---
+
+  it('rejects handshake when hello-ok payload lacks type field', async () => {
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+
+    socket.triggerOpen();
+
+    // Send challenge
+    socket.triggerMessage(JSON.stringify({
+      type: 'event',
+      event: 'connect.challenge',
+      payload: { nonce: 'test-nonce-123', ts: Date.now() },
+    }));
+
+    // Find connect request
+    const connectMsg = socket.sent.find((s) => {
+      try { return JSON.parse(s).method === 'connect'; } catch { return false; }
+    });
+    const connectReq = JSON.parse(connectMsg!) as { id: string };
+
+    // Respond with payload missing type field
+    socket.triggerMessage(JSON.stringify({
+      type: 'res',
+      id: connectReq.id,
+      ok: true,
+      payload: { protocol: 3, server: { version: '1.0' } },
+    }));
+
+    await expect(connectPromise).rejects.toThrow('Invalid HelloOk');
   });
 });

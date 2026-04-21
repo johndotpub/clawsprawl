@@ -28,6 +28,17 @@ export function resetRequestCounter(): void {
   requestCounter = 0;
 }
 
+export function createRequestIdGenerator(): { next: () => string; reset: () => void } {
+  let counter = 0;
+  return {
+    next: () => {
+      counter += 1;
+      return `cs-${Date.now()}-${counter}`;
+    },
+    reset: () => { counter = 0; },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Frame builders
 // ---------------------------------------------------------------------------
@@ -39,10 +50,11 @@ export function resetRequestCounter(): void {
  * @param params - Optional payload to include in the request.
  * @returns The constructed {@link RequestFrame}.
  */
-export function buildRequest(method: string, params?: unknown): RequestFrame {
+export function buildRequest(method: string, params?: unknown, idGenerator?: { next: () => string }): RequestFrame {
+  const id = idGenerator ? idGenerator.next() : nextRequestId();
   return {
     type: 'req',
-    id: nextRequestId(),
+    id,
     method,
     ...(params !== undefined ? { params } : {}),
   };
@@ -52,7 +64,7 @@ export function buildRequest(method: string, params?: unknown): RequestFrame {
 export const PROTOCOL_VERSION = 3;
 
 /** Client version string sent in ConnectParams during handshake. */
-export const CLIENT_VERSION = '0.42.0';
+export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
 
 /**
  * Build {@link ConnectParams} from client options for the `connect` handshake.
@@ -100,7 +112,7 @@ export function buildConnectParams(options: GatewayClientOptions): ConnectParams
 export function parseMessage(input: string): GatewayFrame | null {
   try {
     const parsed = JSON.parse(input);
-    if (typeof parsed !== 'object' || parsed === null) {
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return null;
     }
     if (parsed.type === 'res') {
@@ -162,5 +174,8 @@ export function isRequestFrame(value: unknown): value is RequestFrame {
  * @returns `true` if `frame` is a `connect.challenge` event.
  */
 export function isConnectChallenge(frame: GatewayFrame): frame is EventFrame & { payload: { nonce: string; ts: number } } {
-  return frame.type === 'event' && (frame as EventFrame).event === 'connect.challenge';
+  if (frame.type !== 'event' || (frame as EventFrame).event !== 'connect.challenge') return false;
+  const payload = (frame as EventFrame).payload;
+  return typeof payload === 'object' && payload !== null
+    && typeof (payload as Record<string, unknown>).nonce === 'string';
 }

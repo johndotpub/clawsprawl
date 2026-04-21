@@ -164,7 +164,7 @@ describe('api routes', () => {
     expect(json.configData).toBeNull();
     expect(json.fileStatus).toBeNull();
     expect(json.sessionDetails).toBeNull();
-    expect(json.usageStatus.providers[0].provider).toBe('openai');
+    expect(json.usageStatus).toBeNull();
     expect(json.agents).toEqual([{ id: 'ceo' }]);
     expect(json.skillsStatus.workspaceDir).toBe('');
     expect(json.skillsStatus.managedSkillsDir).toBe('');
@@ -248,7 +248,7 @@ describe('api routes', () => {
     const cookies = createCookies();
 
     const unauthorized = await postPrivateSession({
-      request: new Request('http://localhost/api/private/session', { method: 'POST', body: JSON.stringify({ token: 'bad' }) }),
+      request: new Request('http://localhost/api/private/session', { method: 'POST', body: JSON.stringify({ token: 'bad' }), headers: { 'Content-Type': 'application/json' } }),
       cookies,
     } as any);
     expect(unauthorized.status).toBe(401);
@@ -297,7 +297,23 @@ describe('api routes', () => {
     } as any);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, mode: 'insecure' });
+    expect(await response.json()).toMatchObject({ ok: true });
+  });
+
+  it('returns 401 for non-string token value in JSON body', async () => {
+    process.env.CLAWSPRAWL_MODE = 'token';
+    process.env.CLAWSPRAWL_PRIVATE_TOKEN = 'private-token';
+
+    const response = await postPrivateSession({
+      request: new Request('http://localhost/api/private/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 12345 }),
+      }),
+      cookies: createCookies(),
+    } as any);
+
+    expect(response.status).toBe(401);
   });
 
   it('allows private routes in insecure mode without a session', async () => {

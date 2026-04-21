@@ -120,6 +120,9 @@ const DEFAULT_STATE: DashboardState = {
 /** Maximum events retained in the ring buffer (default 200). */
 const DEFAULT_MAX_EVENTS = 200;
 
+/** Maximum daily cost entries retained in usageCost.daily. */
+const MAX_DAILY_COST_ENTRIES = 365;
+
 /**
  * Reactive state store for the ClawSprawl dashboard.
  *
@@ -132,6 +135,9 @@ export class DashboardStore {
   private listeners = new Set<StateListener>();
   private maxEvents: number;
   private lastNotifiedAt = 0;
+  private eventBuffer: EventFrame[] = [];
+  private eventHead = 0;
+  private eventCount = 0;
 
   /** Minimum interval between `lastUpdatedAt` timestamp bumps (ms). */
   private static readonly UPDATE_DEBOUNCE_MS = 1_000;
@@ -149,7 +155,7 @@ export class DashboardStore {
 
   /** Return the current immutable state snapshot. */
   getSnapshot(): DashboardState {
-    return this.state;
+    return { ...this.state, events: this.getOrderedEvents() };
   }
 
   /** Update the WebSocket connection state, incrementing counters as needed. */
@@ -220,6 +226,9 @@ export class DashboardStore {
 
   /** Update token usage data from `usage.cost`. */
   setUsageCost(usageCost: UsageCostResponse): void {
+    if (usageCost.daily && usageCost.daily.length > MAX_DAILY_COST_ENTRIES) {
+      usageCost = { ...usageCost, daily: usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) };
+    }
     this.update({ usageCost });
   }
 
@@ -270,8 +279,14 @@ export class DashboardStore {
 
   /** Push a single event to the front of the ring buffer. */
   pushEvent(event: EventFrame): void {
-    const nextEvents = [event, ...this.state.events].slice(0, this.maxEvents);
-    this.update({ events: nextEvents });
+    if (this.eventCount < this.maxEvents) {
+      this.eventBuffer.push(event);
+      this.eventCount += 1;
+    } else {
+      this.eventBuffer[this.eventHead] = event;
+      this.eventHead = (this.eventHead + 1) % this.maxEvents;
+    }
+    this.update({ events: this.getOrderedEvents() });
   }
 
   /** Push multiple events to the front of the ring buffer (no-op for empty array). */
@@ -279,8 +294,28 @@ export class DashboardStore {
     if (events.length === 0) {
       return;
     }
-    const nextEvents = [...events, ...this.state.events].slice(0, this.maxEvents);
-    this.update({ events: nextEvents });
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (this.eventCount < this.maxEvents) {
+        this.eventBuffer.push(events[i]);
+        this.eventCount += 1;
+      } else {
+        this.eventBuffer[this.eventHead] = events[i];
+        this.eventHead = (this.eventHead + 1) % this.maxEvents;
+      }
+    }
+    this.update({ events: this.getOrderedEvents() });
+  }
+
+  private getOrderedEvents(): EventFrame[] {
+    if (this.eventCount === 0) return [];
+    if (this.eventCount < this.maxEvents) {
+      return [...this.eventBuffer].reverse();
+    }
+    const result: EventFrame[] = new Array(this.maxEvents);
+    for (let i = 0; i < this.maxEvents; i++) {
+      result[i] = this.eventBuffer[(this.eventHead + this.maxEvents - 1 - i + this.maxEvents) % this.maxEvents];
+    }
+    return result;
   }
 
   /**
@@ -305,7 +340,9 @@ export class DashboardStore {
     if (snapshot.cronJobs !== undefined) patch.cronJobs = snapshot.cronJobs;
     if (snapshot.cronRuns !== undefined) patch.cronRuns = snapshot.cronRuns;
     if (snapshot.models !== undefined) patch.models = snapshot.models;
-    if (snapshot.usageCost !== undefined) patch.usageCost = snapshot.usageCost;
+    if (snapshot.usageCost !== undefined) patch.usageCost = snapshot.usageCost && snapshot.usageCost.daily && snapshot.usageCost.daily.length > MAX_DAILY_COST_ENTRIES
+      ? { ...snapshot.usageCost, daily: snapshot.usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) }
+      : snapshot.usageCost;
     if (snapshot.usageStatus !== undefined) patch.usageStatus = snapshot.usageStatus;
     if (snapshot.toolsCatalog !== undefined) patch.toolsCatalog = snapshot.toolsCatalog;
     if (snapshot.skillsStatus !== undefined) patch.skillsStatus = snapshot.skillsStatus;
@@ -332,7 +369,7 @@ export class DashboardStore {
       lastUpdatedAt: ts,
     };
     for (const listener of this.listeners) {
-      try { listener(this.state); } catch { /* swallow listener errors */ }
+      try { listener(this.state); } catch (err) { console.error('[clawsprawl:store] listener error:', err); }
     }
   }
 }

@@ -7,7 +7,7 @@
  * - `insecure` mode auto-allows private routes for private-network deployments
  */
 import type { AstroCookies } from 'astro';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 
 export const PRIVATE_SESSION_COOKIE = 'clawsprawl_private_session';
 export const DEFAULT_SESSION_MAX_AGE_HOURS = 24;
@@ -37,6 +37,38 @@ export interface AccessState {
 }
 
 const privateSessions = new Map<string, PrivateSessionRecord>();
+const MAX_SESSIONS = 10_000;
+const SESSION_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+
+const pruneInterval = setInterval(() => pruneExpiredPrivateSessions(), SESSION_PRUNE_INTERVAL_MS);
+pruneInterval.unref?.();
+
+function safeTokenEqual(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10;
+const AUTH_RATE_LIMIT_LOCKOUT_MS = 15 * 60 * 1000;
+const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+
+export function checkAuthRateLimit(ip: string): boolean {
+  const record = authFailures.get(ip);
+  if (!record) return true;
+  if (record.lockedUntil && Date.now() < record.lockedUntil) return false;
+  return true;
+}
+
+export function recordAuthFailure(ip: string): void {
+  const record = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
+  record.count++;
+  if (record.count >= AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
+    record.lockedUntil = Date.now() + AUTH_RATE_LIMIT_LOCKOUT_MS;
+  }
+  authFailures.set(ip, record);
+}
 
 function normalizeMode(value: string | undefined): ClawSprawlMode {
   switch (value?.trim().toLowerCase()) {
@@ -54,7 +86,7 @@ function parseSessionMaxAgeHours(value: string | undefined): number {
   if (!Number.isFinite(numeric) || numeric <= 0) {
     return DEFAULT_SESSION_MAX_AGE_HOURS;
   }
-  return Math.min(MAX_SESSION_MAX_AGE_HOURS, Math.floor(numeric));
+  return Math.min(MAX_SESSION_MAX_AGE_HOURS, Math.round(numeric));
 }
 
 export function getAccessConfig(): AccessConfig {
@@ -81,13 +113,15 @@ export function getAccessState(cookies: AstroCookies): AccessState {
   };
 }
 
-export function getPrivateSessionCookieOptions() {
+export function getPrivateSessionCookieOptions(sessionMaxAgeHours?: number) {
+  const maxAge = (sessionMaxAgeHours ?? getAccessConfig().sessionMaxAgeHours) * 3600;
   return {
     httpOnly: true,
     // Keep secure cookies on in production; allow local HTTP dev ergonomics.
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
     path: '/',
+    maxAge,
   };
 }
 
@@ -96,8 +130,12 @@ export function isPrivateViewConfigured(): boolean {
   return config.mode === 'token' && Boolean(config.privateToken);
 }
 
-export function isInsecurePrivateModeEnabled(): boolean {
-  return getAccessConfig().mode === 'insecure';
+function isInsecurePrivateModeEnabled(): boolean {
+  const enabled = getAccessConfig().mode === 'insecure';
+  if (enabled) {
+    console.warn('[clawsprawl:auth] WARNING: CLAWSPRAWL_MODE=insecure — private routes are exposed without authentication');
+  }
+  return enabled;
 }
 
 export function isPrivateRouteAllowed(cookies: AstroCookies): boolean {
@@ -107,14 +145,16 @@ export function isPrivateRouteAllowed(cookies: AstroCookies): boolean {
 
 export function isValidPrivateToken(token: string | undefined): boolean {
   const { mode, privateToken } = getAccessConfig();
-  return mode === 'token' && Boolean(privateToken) && token?.trim() === privateToken;
+  return mode === 'token' && Boolean(privateToken) && safeTokenEqual(token?.trim() ?? '', privateToken);
 }
 
 export function readBearerToken(request: Request): string | undefined {
   const authorization = request.headers.get('authorization');
   if (!authorization) return undefined;
-  const [scheme, value] = authorization.split(/\s+/, 2);
-  return scheme?.toLowerCase() === 'bearer' ? value : undefined;
+  const trimmed = authorization.trim();
+  if (!trimmed.toLowerCase().startsWith('bearer ')) return undefined;
+  const value = trimmed.slice(7).trim();
+  return value.length > 0 ? value : undefined;
 }
 
 function pruneExpiredPrivateSessions(now = Date.now()): void {
@@ -131,6 +171,10 @@ export function hasPrivateViewSession(cookies: AstroCookies): boolean {
 }
 
 export function setPrivateViewSession(cookies: AstroCookies): PrivateSessionRecord {
+  pruneExpiredPrivateSessions();
+  if (privateSessions.size >= MAX_SESSIONS) {
+    throw new Error('Session store full');
+  }
   const { sessionMaxAgeHours } = getAccessConfig();
   const now = Date.now();
   const session: PrivateSessionRecord = {
@@ -150,6 +194,9 @@ export function clearPrivateViewSession(cookies: AstroCookies): void {
 }
 
 export function clearPrivateSessionsForTest(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('clearPrivateSessionsForTest is only available in test environment');
+  }
   privateSessions.clear();
 }
 

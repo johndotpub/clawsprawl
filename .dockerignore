@@ -6,6 +6,11 @@ dist
 coverage
 playwright-report
 test-results
+tests
+docs
+scripts
+*.md
+!README.md
 docs/screenshots
 *.log
 *.local

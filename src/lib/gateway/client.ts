@@ -1,6 +1,7 @@
 import {
   buildConnectParams,
   buildRequest,
+  createRequestIdGenerator,
   isConnectChallenge,
   isEventFrame,
   isResponseFrame,
@@ -15,6 +16,21 @@ import type {
   ResponseFrame,
   Snapshot,
 } from './types';
+
+/**
+ * Verify the gateway challenge nonce for mutual authentication.
+ *
+ * This stub exists to document the nonce verification path. In a future
+ * release, the client should verify the nonce against a known gateway
+ * identity (e.g., by checking a signature or comparing against a pinned
+ * gateway public key) to prevent MITM gateway impersonation.
+ *
+ * @param _nonce - The nonce string received in the connect.challenge event.
+ * @returns `true` for now — always accepts the nonce until verification is implemented.
+ */
+export function verifyGatewayNonce(_nonce: string): boolean {
+  return true;
+}
 
 /** Callback invoked whenever the connection state changes. */
 type StateListener = (state: ConnectionState) => void;
@@ -42,7 +58,7 @@ interface PendingRequest {
  */
 export class GatewayClient {
   private readonly options: Required<
-    Pick<GatewayClientOptions, 'reconnect' | 'minReconnectDelayMs' | 'maxReconnectDelayMs' | 'connectTimeoutMs'>
+    Pick<GatewayClientOptions, 'reconnect' | 'minReconnectDelayMs' | 'maxReconnectDelayMs' | 'connectTimeoutMs' | 'rpcTimeoutMs'>
   > &
     GatewayClientOptions;
 
@@ -50,10 +66,17 @@ export class GatewayClient {
   private state: ConnectionState = 'idle';
   private reconnectEnabled = false;
   private reconnectDelayMs: number;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 20;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stateListeners = new Set<StateListener>();
   private eventListeners = new Set<GatewayEventListener>();
   private pending = new Map<string, PendingRequest>();
   private activeConnectUrl: string;
+  private connectInFlight: Promise<HelloOk> | null = null;
+  private requestIdGenerator = createRequestIdGenerator();
+  private primaryRetryTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly PRIMARY_RETRY_INTERVAL_MS = 60_000;
 
   /** Populated after a successful handshake. */
   private _helloOk: HelloOk | null = null;
@@ -64,6 +87,7 @@ export class GatewayClient {
       minReconnectDelayMs: 800,
       maxReconnectDelayMs: 30_000,
       connectTimeoutMs: 10_000,
+      rpcTimeoutMs: 30_000,
       ...options,
     };
     this.reconnectDelayMs = this.options.minReconnectDelayMs;
@@ -102,6 +126,8 @@ export class GatewayClient {
    * @returns A promise that resolves with the {@link HelloOk} handshake payload.
    */
   async connect(): Promise<HelloOk> {
+    if (this.connectInFlight) return this.connectInFlight;
+
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       if (this._helloOk) {
         return this._helloOk;
@@ -110,6 +136,15 @@ export class GatewayClient {
 
     this.setState(this.state === 'idle' ? 'connecting' : 'reconnecting');
 
+    this.connectInFlight = this.openSocketWithFallback();
+    try {
+      return await this.connectInFlight;
+    } finally {
+      this.connectInFlight = null;
+    }
+  }
+
+  private async openSocketWithFallback(): Promise<HelloOk> {
     try {
       return await this.openSocket(this.activeConnectUrl);
     } catch (err) {
@@ -130,7 +165,16 @@ export class GatewayClient {
     this.reconnectEnabled = false;
     this._helloOk = null;
     this.clearPending(new Error('Disconnected'));
+    this.clearPrimaryRetry();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.socket) {
+      this.socket.onopen = null;
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      this.socket.onmessage = null;
       this.socket.close();
       this.socket = null;
     }
@@ -180,17 +224,25 @@ export class GatewayClient {
       throw new Error('Socket is not connected');
     }
 
-    const request = buildRequest(method, params);
+    const request = buildRequest(method, params, this.requestIdGenerator);
     const payload = JSON.stringify(request);
 
     return new Promise<TResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(request.id);
         reject(new Error(`RPC timeout: ${method}`));
-      }, this.options.connectTimeoutMs);
+      }, this.options.rpcTimeoutMs);
 
-      this.pending.set(request.id, { resolve, reject, timeout });
-      this.socket?.send(payload);
+      const entry = { resolve, reject, timeout };
+      this.pending.set(request.id, entry);
+
+      try {
+        this.socket?.send(payload);
+      } catch (err) {
+        clearTimeout(timeout);
+        this.pending.delete(request.id);
+        entry.reject(err instanceof Error ? err : new Error('ws.send() failed'));
+      }
     });
   }
 
@@ -253,8 +305,10 @@ export class GatewayClient {
             clearTimeout(timeout);
             this._helloOk = helloOk;
             this.setState('connected');
-            this.reconnectEnabled = this.options.reconnect;
-            this.reconnectDelayMs = this.options.minReconnectDelayMs;
+    this.reconnectEnabled = this.options.reconnect;
+    this.reconnectAttempts = 0;
+    this.reconnectDelayMs = this.options.minReconnectDelayMs;
+    this.schedulePrimaryRetry();
             resolve(helloOk);
           }, (err) => {
             handshakeComplete = true;
@@ -280,12 +334,21 @@ export class GatewayClient {
 
     // Step 1: Gateway sends connect.challenge
     if (isConnectChallenge(frame)) {
+      const nonce = frame.payload?.nonce ?? '';
+      if (!verifyGatewayNonce(nonce)) {
+        onError(new Error('Gateway nonce verification failed'));
+        return;
+      }
       const connectParams = buildConnectParams(this.options);
-      const connectReq = buildRequest('connect', connectParams);
+      const connectReq = buildRequest('connect', connectParams, this.requestIdGenerator);
 
       // Store pending so we can match the response
       this.pending.set(connectReq.id, {
         resolve: (payload) => {
+          if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).type !== 'hello-ok') {
+            onError(new Error('Invalid HelloOk response from gateway'));
+            return;
+          }
           const helloOk = payload as HelloOk;
           onSuccess(helloOk);
         },
@@ -350,10 +413,17 @@ export class GatewayClient {
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.setState('error');
+      console.warn('[clawsprawl:client] max reconnect attempts reached');
+      return;
+    }
     this.setState('reconnecting');
+    this.reconnectAttempts++;
     const jitter = Math.floor(Math.random() * 150);
     const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect().catch((err) => {
         console.warn('[clawsprawl:client] reconnect failed:', err);
         this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.options.maxReconnectDelayMs);
@@ -369,6 +439,29 @@ export class GatewayClient {
     this.state = nextState;
     for (const listener of this.stateListeners) {
       try { listener(nextState); } catch { /* swallow listener errors */ }
+    }
+  }
+
+  private schedulePrimaryRetry(): void {
+    this.clearPrimaryRetry();
+    if (!this.options.fallbackUrl || this.activeConnectUrl !== this.options.fallbackUrl) return;
+
+    this.primaryRetryTimer = setInterval(() => {
+      if (this.options.url && this.activeConnectUrl === this.options.fallbackUrl) {
+        const primaryUrl = this.options.url;
+        this.openSocket(primaryUrl).then(() => {
+          this.activeConnectUrl = primaryUrl;
+        }).catch(() => {
+          // Primary still unreachable — stay on fallback
+        });
+      }
+    }, GatewayClient.PRIMARY_RETRY_INTERVAL_MS);
+  }
+
+  private clearPrimaryRetry(): void {
+    if (this.primaryRetryTimer) {
+      clearInterval(this.primaryRetryTimer);
+      this.primaryRetryTimer = null;
     }
   }
 }

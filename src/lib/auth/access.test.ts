@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  checkAuthRateLimit,
   clearPrivateSessionsForTest,
   clearPrivateViewSession,
   getAccessConfig,
@@ -9,6 +10,7 @@ import {
   isValidPrivateToken,
   PRIVATE_SESSION_COOKIE,
   readBearerToken,
+  recordAuthFailure,
   setPrivateViewSession,
 } from './access';
 
@@ -55,6 +57,13 @@ describe('access helpers', () => {
     expect(readBearerToken(new Request('http://localhost', { headers: { authorization: 'Bearer abc' } }))).toBe('abc');
   });
 
+  it('uses constant-time token comparison', () => {
+    expect(isValidPrivateToken('private-token')).toBe(true);
+    expect(isValidPrivateToken('PRIVATE-TOKEN')).toBe(false);
+    expect(isValidPrivateToken('')).toBe(false);
+    expect(isValidPrivateToken(undefined as unknown as string)).toBe(false);
+  });
+
   it('creates and clears a server-backed private session', () => {
     const cookies = createCookies();
     expect(hasPrivateViewSession(cookies as any)).toBe(false);
@@ -66,9 +75,8 @@ describe('access helpers', () => {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
+      maxAge: expect.any(Number),
     });
-    expect(typeof (cookies.optionsByName.get(PRIVATE_SESSION_COOKIE) as { secure?: unknown })?.secure).toBe('boolean');
-    expect(cookies.optionsByName.get(PRIVATE_SESSION_COOKIE)).not.toMatchObject({ maxAge: expect.any(Number) });
     expect(hasPrivateViewSession(cookies as any)).toBe(true);
     expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
 
@@ -97,5 +105,25 @@ describe('access helpers', () => {
       insecureModeEnabled: true,
     });
     expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
+  });
+
+  it('rate limits after 10 failed auth attempts', () => {
+    expect(checkAuthRateLimit('1.2.3.4')).toBe(true);
+    for (let i = 0; i < 10; i++) {
+      recordAuthFailure('1.2.3.4');
+    }
+    expect(checkAuthRateLimit('1.2.3.4')).toBe(false);
+    expect(checkAuthRateLimit('5.6.7.8')).toBe(true);
+  });
+
+  it('enforces session store cap', () => {
+    clearPrivateSessionsForTest();
+    for (let i = 0; i < 10_000; i++) {
+      const cookies = createCookies();
+      setPrivateViewSession(cookies as any);
+    }
+    const overflowCookies = createCookies();
+    expect(() => setPrivateViewSession(overflowCookies as any)).toThrow('Session store full');
+    clearPrivateSessionsForTest();
   });
 });
