@@ -1,0 +1,4 @@
+[allowlist]
+paths = [
+  "docs/heredoc-api-sourcecode.md"
+]
