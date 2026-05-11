@@ -51,17 +51,17 @@
     "start": "NODE_ENV=production node --allow-fs=dist --allow-fs=/tmp --allow-net dist/server/entry.mjs"
   },
   "dependencies": {
-    "@astrojs/node": "^10.0.6",
+    "@astrojs/node": "^10.1.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
-    "@tailwindcss/vite": "^4.2.4",
+    "@tailwindcss/vite": "^4.3.0",
     "astro": "^6.2.2",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.1",
-    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@playwright/test": "^1.60.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
     "@typescript-eslint/parser": "^8.59.1",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.6",
     "eslint": "^10.3.0",
     "vitest": "^4.1.4"
   },
