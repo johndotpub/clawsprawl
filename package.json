@@ -54,14 +54,14 @@
     "@astrojs/node": "^10.1.1",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tailwindcss/vite": "^4.3.0",
-    "astro": "^6.3.5",
+    "astro": "^6.3.7",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/eslint-plugin": "^8.60.0",
     "@typescript-eslint/parser": "^8.59.1",
-    "@vitest/coverage-v8": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.7",
     "eslint": "^10.4.0",
     "vitest": "^4.1.4"
   },
