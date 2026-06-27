@@ -6,18 +6,21 @@ test('renders server-default theme and lets user switch with persistence', async
   await expect(html).toHaveAttribute('data-cs-theme', 'sprawl');
 
   const inlineStyle = page.locator('style#cs-theme-vars');
-  await expect(inlineStyle).toContainText('--color-terminal-green: #00ff41;');
+  const styleContent = await inlineStyle.evaluate((el) => el.textContent || '');
+  expect(styleContent).toContain('--color-terminal-green: #00ff41;');
 
   const select = page.locator('#cs-theme-select');
   await select.selectOption('cyberpunk');
 
   await expect(html).toHaveAttribute('data-cs-theme', 'cyberpunk');
-  await expect(inlineStyle).toContainText('--color-terminal-green: #ff2bd6;');
+  const cyberpunkContent = await inlineStyle.evaluate((el) => el.textContent || '');
+  expect(cyberpunkContent).toContain('--color-terminal-green: #ff2bd6;');
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#0d0220');
 
   await page.reload();
   await expect(html).toHaveAttribute('data-cs-theme', 'cyberpunk');
-  await expect(inlineStyle).toContainText('--color-terminal-green: #ff2bd6;');
+  const reloadedContent = await inlineStyle.evaluate((el) => el.textContent || '');
+  expect(reloadedContent).toContain('--color-terminal-green: #ff2bd6;');
 });
 
 test('falls back to sprawl for unknown stored theme', async ({ page }) => {
