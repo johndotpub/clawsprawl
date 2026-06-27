@@ -6,7 +6,7 @@ import type {
   RequestFrame,
   ResponseFrame,
 } from './types';
-import { sign as ed25519Sign } from 'node:crypto';
+import { createPrivateKey, sign as ed25519Sign } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Request ID generation
@@ -91,21 +91,81 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  * @returns The assembled {@link ConnectParams} for the handshake request.
  */
 /**
- * Sign the connect challenge nonce with an Ed25519 private key.
- * Returns a hex-encoded signature, or empty string if no key is available.
+ * Normalize device metadata for auth payload (lowercase + trim, matching gateway).
  */
-function signNonce(nonce: string, privateKeyPem: string): string {
+function normalizeDeviceMetadataForAuth(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/[A-Z]/g, (char) => String.fromCharCode(char.charCodeAt(0) + 32));
+}
+
+/**
+ * Build the v3 device auth signature payload string.
+ * The gateway reconstructs this exact string and verifies the signature against it.
+ */
+function buildDeviceAuthPayloadV3(params: {
+  deviceId: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  scopes: string[];
+  signedAtMs: number;
+  token: string;
+  nonce: string;
+  platform: string;
+  deviceFamily?: string;
+}): string {
+  const scopes = params.scopes.join(',');
+  const token = params.token ?? '';
+  const platform = normalizeDeviceMetadataForAuth(params.platform);
+  const deviceFamily = normalizeDeviceMetadataForAuth(params.deviceFamily);
+  return [
+    'v3',
+    params.deviceId,
+    params.clientId,
+    params.clientMode,
+    params.role,
+    scopes,
+    String(params.signedAtMs),
+    token,
+    params.nonce,
+    platform,
+    deviceFamily,
+  ].join('|');
+}
+
+/**
+ * Sign the connect challenge with an Ed25519 private key using the v3 payload format.
+ * Returns a base64url-encoded signature, or undefined if signing fails.
+ */
+function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyPem: string): { signature: string; signedAt: number } | undefined {
   try {
-    const key = Buffer.from(privateKeyPem.replace(/\\n/g, '\n'), 'utf-8');
-    const signature = ed25519Sign(undefined, Buffer.from(nonce, 'utf-8'), key);
-    return signature.toString('hex');
+    const signedAt = Date.now();
+    const deviceId = options.deviceId!;
+    const payload = buildDeviceAuthPayloadV3({
+      deviceId,
+      clientId: options.clientId ?? 'gateway-client',
+      clientMode: options.clientMode ?? 'ui',
+      role: options.role ?? 'operator',
+      scopes: options.scopes ?? ['operator.read'],
+      signedAtMs: signedAt,
+      token: options.token ?? '',
+      nonce,
+      platform: typeof navigator !== 'undefined' ? navigator.platform ?? 'unknown' : 'server',
+    });
+    const key = createPrivateKey(Buffer.from(privateKeyPem, 'utf-8'));
+    const signature = ed25519Sign(undefined, Buffer.from(payload, 'utf-8'), key);
+    return { signature: signature.toString('base64url'), signedAt };
   } catch {
-    return '';
+    return undefined;
   }
 }
 
 export function buildConnectParams(options: GatewayClientOptions, challengeNonce?: string): ConnectParams {
-  const signature = (challengeNonce && options.devicePrivateKey) ? signNonce(challengeNonce, options.devicePrivateKey) : undefined;
+  const signed = (challengeNonce && options.deviceId && options.devicePrivateKey)
+    ? signChallenge(options, challengeNonce, options.devicePrivateKey)
+    : undefined;
   return {
     minProtocol: MIN_PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,
@@ -129,7 +189,7 @@ export function buildConnectParams(options: GatewayClientOptions, challengeNonce
         id: options.deviceId,
         publicKey: options.devicePublicKey ?? '',
         ...(challengeNonce ? { nonce: challengeNonce } : {}),
-        ...(signature ? { signature, signedAt: Date.now() } : {}),
+        ...(signed ? { signature: signed.signature, signedAt: signed.signedAt } : {}),
       },
     } : {}),
   };
