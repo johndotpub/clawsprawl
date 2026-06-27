@@ -94,6 +94,23 @@ Initialize a local profile scaffold:
 npm run profile:local:init
 ```
 
+## Theme Configuration
+
+The dashboard ships with 6 built-in dark-mode themes. Switch via the theme selector
+in the top-right corner of the dashboard — your choice persists in the browser via
+`localStorage`.
+
+- Built-in themes: `sprawl` (default), `cyberpunk`, `midnight`, `ember`, `mono`, `slate`
+- Theme presets: [`src/config/themes/presets.ts`](src/config/themes/presets.ts)
+- Server default: `PUBLIC_CLAWSPRAWL_THEME=sprawl` in `.env`
+
+Set the server-default theme via the ops CLI:
+
+```sh
+npm run ops -- theme list
+npm run ops -- theme set midnight
+```
+
 ## Quality Pass
 
 Recommended release gate:

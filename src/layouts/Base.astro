@@ -3,6 +3,8 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/jetbrains-mono/700.css';
 import '../styles/global.css';
+import { resolveTheme, listThemes } from '../config/themes';
+import ThemeSwitcher from '../components/ThemeSwitcher.astro';
 
 interface Props {
   title?: string;
@@ -14,18 +16,24 @@ const {
   description = 'Agent swarm operations interface for ClawSprawl.'
 } = Astro.props;
 
+const serverThemeId = import.meta.env.PUBLIC_CLAWSPRAWL_THEME ?? 'sprawl';
+const theme = resolveTheme(serverThemeId);
+const themeVars = Object.entries(theme.tokens)
+  .map(([k, v]) => `${k}: ${v};`)
+  .join(' ');
+
 const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null;
 ---
 
 <!doctype html>
-<html lang="en" class="h-full bg-terminal-bg text-terminal-text">
+<html lang="en" data-cs-theme={theme.id} class="h-full bg-terminal-bg text-terminal-text">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content={theme.themeColor} />
     <meta name="robots" content="noindex, nofollow" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self';" />
     {canonicalUrl && <link rel="canonical" href={canonicalUrl.href} />}
@@ -43,11 +51,13 @@ const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null
     <meta name="twitter:description" content={description} />
 
     <title>{title}</title>
+    <style id="cs-theme-vars" is:inline set:html={`:root[data-cs-theme="${theme.id}"]{${themeVars}}`} />
   </head>
   <body class="h-full">
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-terminal-bg focus:px-4 focus:py-2 focus:text-terminal-green">
       Skip to main content
     </a>
+    <ThemeSwitcher themes={listThemes()} activeId={theme.id} />
     <div class="scanlines"></div>
     <div class="relative z-10 min-h-screen">
       <slot />
@@ -57,5 +67,8 @@ const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null
         JavaScript is required for the live operations dashboard. Static content is still visible above.
       </p>
     </noscript>
+    <script>
+      import '../scripts/theme-switch';
+    </script>
   </body>
 </html>

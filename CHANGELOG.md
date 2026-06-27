@@ -51,6 +51,23 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Clean stale WS+SSE docstring in deprecated `events.ts` route.
 - Bump version to `0.43.0`.
 
+### Added — Theming
+- Add 6 built-in dark-mode theme presets: `sprawl` (default, byte-identical to original),
+  `cyberpunk`, `midnight`, `ember`, `mono`, `slate`.
+- Add `ThemeSwitcher` component — minimal `<select>` in the top-right corner, terminal-styled.
+- Add `src/scripts/theme-switch.ts` — vanilla JS bootstrap that reads `localStorage`, applies
+  CSS variable overrides via `<style id="cs-theme-vars">`, and wires the switcher.
+- Add `src/config/themes/` module: `types.ts`, `presets.ts`, `index.ts` (registry + resolver).
+- Add `PUBLIC_CLAWSPRAWL_THEME` env var for server-default theme (SSR + first paint + no-JS).
+- Add `cs-ops.sh theme list|get|set` CLI subcommands.
+- Add `data-cs-theme` attribute on `<html>` + dynamic `<meta name="theme-color">`.
+- Add `tests/e2e/theme-switch.spec.ts` — e2e for switch + persistence + per-preset smoke.
+- Add `src/config/themes/presets.test.ts` — unit tests enforcing: all 10 tokens as `#rrggbb`,
+  dark-mode luminance invariant (< 0.18), WCAG AA body-text contrast (≥ 4.5:1), unique ids,
+  sprawl byte-match to `global.css`, resolver defaults/fallbacks.
+- All themes respect the dark-mode-only policy and map to existing `--color-terminal-*` tokens.
+- Save standard development loop model to `AGENTS.md`.
+
 ## [0.42.69] - 2026-04-19
 
 ### Security

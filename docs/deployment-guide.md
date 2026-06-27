@@ -30,6 +30,7 @@ cp .env.example .env
 - `CLAWSPRAWL_PRIVATE_TOKEN` (required for `token` mode)
 - `CLAWSPRAWL_SESSION_MAX_AGE_HOURS` (optional; default `24`, max `24`)
 - `PUBLIC_MAINFRAME_PROFILE` (optional; profile id)
+- `PUBLIC_CLAWSPRAWL_THEME` (optional; default `sprawl`; server-default theme id — browser localStorage overrides per-device)
 
 Template reference: [`../.env.example`](../.env.example)
 
@@ -119,6 +120,8 @@ Common commands:
 - `npm run ops -- tmux-up --local --auto-init-local`
 - `npm run ops -- tmux-up --profile-file /path/to/private-profile.ts`
 - `npm run ops -- dev --profile-file /path/to/private-profile.ts`
+- `npm run ops -- theme list`
+- `npm run ops -- theme set midnight`
 - `npm run ops -- qa-strict`
 
 ## Quality Gates

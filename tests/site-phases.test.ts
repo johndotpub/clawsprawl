@@ -275,4 +275,40 @@ describe('architecture and release-governance hardening checks', () => {
     expect(docsCoverage).toMatch(/[Dd]ocumentation\s+coverage/i);
     expect(e2eCoverage).toMatch(/>=\s*80%/);
   });
+
+  it('injects theme vars style and data-cs-theme attribute in Base layout', async () => {
+    const base = await read('src/layouts/Base.astro');
+    expect(base).toContain('data-cs-theme={theme.id}');
+    expect(base).toContain('cs-theme-vars');
+    expect(base).toContain("import { resolveTheme, listThemes } from '../config/themes'");
+    expect(base).toContain('<ThemeSwitcher');
+  });
+
+  it('ships a theme switcher component with select', async () => {
+    const switcher = await read('src/components/ThemeSwitcher.astro');
+    expect(switcher).toContain('id="cs-theme-select"');
+  });
+
+  it('ships theme presets with 6 built-in themes', async () => {
+    const presets = await read('src/config/themes/presets.ts');
+    expect(presets).toContain("id: 'sprawl'");
+    expect(presets).toContain("id: 'cyberpunk'");
+    expect(presets).toContain("id: 'midnight'");
+    expect(presets).toContain("id: 'ember'");
+    expect(presets).toContain("id: 'mono'");
+    expect(presets).toContain("id: 'slate'");
+  });
+
+  it('exposes cs-theme CLI subcommands in cs-ops.sh', async () => {
+    const ops = await read('scripts/cs-ops.sh');
+    expect(ops).toContain('theme list');
+    expect(ops).toContain('theme get');
+    expect(ops).toContain('theme set');
+    expect(ops).toContain('PUBLIC_CLAWSPRAWL_THEME');
+  });
+
+  it('keeps dark-mode policy — no light hexes as bg in presets', async () => {
+    const presets = await read('src/config/themes/presets.ts');
+    expect(presets).not.toMatch(/'--color-terminal-bg': '#f[0-9a-f]{5}/i);
+  });
 });
