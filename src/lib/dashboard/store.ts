@@ -58,6 +58,10 @@ export interface DashboardState {
   fileStatus: FileStatusEntry[] | null;
   /** Session detail entries derived from `sessions.list` RPC data. */
   sessionDetails: SessionDetailEntry[] | null;
+  /** Update-available notification from `update.available` event or hello-ok snapshot. */
+  updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
+  /** Shutdown notification from `shutdown` event. */
+  shutdown: { reason: string; restartExpectedMs?: number } | null;
 }
 
 /** Snapshot payload shape returned by dashboard snapshot API routes. */
@@ -85,6 +89,8 @@ export interface DashboardSnapshotPayload {
   configData?: ConfigResponse | null;
   fileStatus?: FileStatusEntry[] | null;
   sessionDetails?: SessionDetailEntry[] | null;
+  updateAvailable?: { currentVersion: string; latestVersion: string; channel: string } | null;
+  shutdown?: { reason: string; restartExpectedMs?: number } | null;
 }
 
 type StateListener = (state: DashboardState) => void;
@@ -115,6 +121,8 @@ const DEFAULT_STATE: DashboardState = {
   configData: null,
   fileStatus: null,
   sessionDetails: null,
+  updateAvailable: null,
+  shutdown: null,
 };
 
 /** Maximum events retained in the ring buffer (default 200). */
@@ -219,7 +227,7 @@ export class DashboardStore {
     this.update({ health });
   }
 
-  /** Update presence entries from gateway snapshot or `presence.list`. */
+  /** Update presence entries from gateway snapshot or `system-presence`. */
   setPresence(presence: PresenceEntry[]): void {
     this.update({ presence });
   }
@@ -275,6 +283,16 @@ export class DashboardStore {
   /** Update session detail entries derived from `sessions.list`. */
   setSessionDetails(sessionDetails: SessionDetailEntry[]): void {
     this.update({ sessionDetails });
+  }
+
+  /** Set update-available notification from `update.available` event. */
+  setUpdateAvailable(updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null): void {
+    this.update({ updateAvailable });
+  }
+
+  /** Set shutdown notification from `shutdown` event. */
+  setShutdown(shutdown: { reason: string; restartExpectedMs?: number } | null): void {
+    this.update({ shutdown });
   }
 
   /** Push a single event to the front of the ring buffer. */
@@ -352,6 +370,8 @@ export class DashboardStore {
     if (snapshot.configData !== undefined) patch.configData = snapshot.configData;
     if (snapshot.fileStatus !== undefined) patch.fileStatus = snapshot.fileStatus;
     if (snapshot.sessionDetails !== undefined) patch.sessionDetails = snapshot.sessionDetails;
+    if (snapshot.updateAvailable !== undefined) patch.updateAvailable = snapshot.updateAvailable;
+    if (snapshot.shutdown !== undefined) patch.shutdown = snapshot.shutdown;
 
     this.update(patch);
   }

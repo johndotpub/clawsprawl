@@ -573,8 +573,8 @@ describe('dashboard adapters', () => {
     expect(result.skills[0]?.emoji).toBe('🔧');
     expect(result.skills[0]?.eligible).toBe(true);
     expect(result.skills[1]?.eligible).toBe(false);
-    expect(result.skills[1]?.missing.bins).toEqual(['docker']);
-    expect(result.skills[1]?.missing.env).toEqual(['DOCKER_HOST']);
+    expect(result.skills[1]?.missing?.bins).toEqual(['docker']);
+    expect(result.skills[1]?.missing?.env).toEqual(['DOCKER_HOST']);
   });
 
   it('normalizes skills.status from empty/null input', () => {

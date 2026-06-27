@@ -124,7 +124,7 @@ export function normalizeAgents(payload: unknown): AgentSummary[] {
       ...optionalString('name', entry.name),
       ...(entry.model !== undefined ? { model: entry.model } : {}),
       ...optionalString('workspace', entry.workspace),
-    }));
+    })) as AgentSummary[];
 }
 
 /**
@@ -200,7 +200,7 @@ export function normalizeCronJobs(payload: unknown): CronJobSummary[] {
       ...(rec.enabled !== undefined ? { enabled: Boolean(rec.enabled) } : {}),
       ...(rec.schedule ? { schedule: rec.schedule } : {}),
     };
-  });
+  }) as CronJobSummary[];
 }
 
 /**
@@ -213,9 +213,9 @@ export function normalizeCronJobs(payload: unknown): CronJobSummary[] {
  * @returns Normalized array of cron run entries.
  */
 export function normalizeCronRuns(payload: unknown): CronRunEntry[] {
-  if (Array.isArray(payload)) return payload.map((entry) => ({ ...asRecord(entry) }));
+  if (Array.isArray(payload)) return payload.map((entry) => ({ ...asRecord(entry) })) as CronRunEntry[];
   const source = unwrapEnvelope(payload, 'entries');
-  return source.map((entry) => ({ ...asRecord(entry) }));
+  return source.map((entry) => ({ ...asRecord(entry) })) as CronRunEntry[];
 }
 
 /**
@@ -245,7 +245,7 @@ export function normalizeModels(payload: unknown): ModelInfo[] {
       ...(rec.contextWindow !== undefined ? { contextWindow: Number(rec.contextWindow) } : {}),
       ...(rec.reasoning !== undefined ? { reasoning: Boolean(rec.reasoning) } : {}),
     };
-  });
+  }) as ModelInfo[];
 }
 
 /**

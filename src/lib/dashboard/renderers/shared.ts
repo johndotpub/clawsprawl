@@ -115,18 +115,71 @@ export function renderSkeletonRows(count = 3): string {
     .join('');
 }
 
+/**
+ * Bucket gateway event names into semantic filter categories for the Activity Feed.
+ *
+ * Covers all 31 event types in the OpenClaw gateway `GATEWAY_EVENTS` registry plus
+ * the dynamic `update.available` and the targeted broadcasts `chat.send_timing` /
+ * `chat.side_result`. Uses a lookup table for DRY maintainability — add new event
+ * families by extending the table, not the if-else chain.
+ *
+ * @see docs/heredoc-api-sourcecode.md for the complete event-types table.
+ */
+const EVENT_BUCKET_TABLE: ReadonlyArray<readonly [RegExp, string]> = [
+  // Unrestricted / transport
+  [/^connect\.challenge$/, 'handshake'],
+  [/^tick$/, 'heartbeat'],
+  [/^heartbeat$/, 'heartbeat'],
+  [/^health$/, 'health'],
+  [/^presence$/, 'presence'],
+  [/^node\.presence\.alive$/, 'presence'],
+  [/^shutdown$/, 'shutdown'],
+  [/^update\.available$/, 'update'],
+  [/^payload\.large$/, 'payload'],
+  // operator.read
+  [/^cron$/, 'cron'],
+  [/^sessions\.changed$/, 'session'],
+  [/^session\.message$/, 'message'],
+  [/^session\.operation$/, 'session'],
+  [/^session\.tool$/, 'tool'],
+  [/^agent$/, 'agent'],
+  [/^chat$/, 'message'],
+  [/^chat\.send_timing$/, 'latency'],
+  [/^chat\.side_result$/, 'message'],
+  [/^talk\.event$/, 'voice'],
+  [/^voicewake\.changed$/, 'config'],
+  [/^voicewake\.routing\.changed$/, 'config'],
+  // operator.approvals
+  [/^exec\.approval\./, 'permission'],
+  [/^plugin\.approval\./, 'permission'],
+  // operator.pairing
+  [/^node\.pair\./, 'pairing'],
+  [/^device\.pair\./, 'pairing'],
+  // other broadcasts
+  [/^node\.invoke\.request$/, 'node'],
+  [/^talk\.mode$/, 'voice'],
+  // Fallback prefix matches (must be after specific entries)
+  [/^session\./, 'session'],
+  // File events (gateway-emitted, not in GATEWAY_EVENTS but historically handled)
+  [/^file\./, 'file'],
+  // Message flow events (gateway-emitted)
+  [/^message\./, 'message'],
+];
+
+/** All valid event bucket names — used to derive the default filter set in bootstrap. */
+export const EVENT_BUCKETS = [
+  'cron', 'heartbeat', 'health', 'presence', 'session', 'tool', 'message',
+  'permission', 'file', 'config', 'voice', 'agent', 'shutdown', 'update',
+  'payload', 'pairing', 'node', 'latency', 'handshake', 'other',
+] as const;
+
+export type EventBucket = typeof EVENT_BUCKETS[number];
+
 /** Bucket gateway event names for Activity Feed filter chips. */
 export function eventBucket(name: string): string {
-  if (name === 'cron') return 'cron';
-  if (name === 'heartbeat' || name === 'tick') return 'heartbeat';
-  if (name === 'health') return 'health';
-  if (name === 'presence') return 'presence';
-  if (name === 'session.tool') return 'tool';
-  if (name === 'session.message') return 'message';
-  if (name.startsWith('exec.approval.') || name.startsWith('plugin.approval.')) return 'permission';
-  if (name.startsWith('file.')) return 'file';
-  if (name.startsWith('message.')) return 'message';
-  if (name.startsWith('session.')) return 'session';
+  for (const [pattern, bucket] of EVENT_BUCKET_TABLE) {
+    if (pattern.test(name)) return bucket;
+  }
   return 'other';
 }
 

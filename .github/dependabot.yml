@@ -6,7 +6,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      npm-all:
+      npm-prod:
+        dependency-type: production
+        patterns:
+          - "*"
+      npm-dev:
+        dependency-type: development
         patterns:
           - "*"
 

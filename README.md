@@ -1,6 +1,6 @@
 # ClawSprawl 🕶️🤖
 
-![Version](https://img.shields.io/badge/version-0.42.1-00d4ff)
+![Version](https://img.shields.io/badge/version-0.43.0-00d4ff)
 ![License: Unlicense](https://img.shields.io/badge/license-Unlicense-00ff41)
 ![Node](https://img.shields.io/badge/node-22.12%2B-339933?logo=node.js&logoColor=white)
 ![Astro](https://img.shields.io/badge/astro-6.x-FF5D01?logo=astro&logoColor=white)
@@ -92,6 +92,23 @@ Initialize a local profile scaffold:
 
 ```sh
 npm run profile:local:init
+```
+
+## Theme Configuration
+
+The dashboard ships with 6 built-in dark-mode themes. Switch via the theme selector
+in the top-right corner of the dashboard — your choice persists in the browser via
+`localStorage`.
+
+- Built-in themes: `sprawl` (default), `cyberpunk`, `midnight`, `ember`, `mono`, `slate`
+- Theme presets: [`src/config/themes/presets.ts`](src/config/themes/presets.ts)
+- Server default: `PUBLIC_CLAWSPRAWL_THEME=sprawl` in `.env`
+
+Set the server-default theme via the ops CLI:
+
+```sh
+npm run ops -- theme list
+npm run ops -- theme set midnight
 ```
 
 ## Quality Pass

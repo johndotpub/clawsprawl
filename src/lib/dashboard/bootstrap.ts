@@ -9,7 +9,7 @@
  */
 
 import { countSessionsByAgent } from './adapters';
-import { PRIVATE_DASHBOARD_PANELS, PUBLIC_DASHBOARD_PANELS, type DashboardPanelDefinition } from './panel-config';
+import { PRIVATE_DASHBOARD_PANELS, PUBLIC_DASHBOARD_PANELS, computePanelCount, type DashboardPanelDefinition } from './panel-config';
 import {
   connectionClass,
   renderAgentRows,
@@ -34,6 +34,7 @@ import {
   renderToolExecutionRows,
   renderUsageCostRows,
 } from './renderers';
+import { EVENT_BUCKETS } from './renderers/shared';
 import { DashboardStore } from './store';
 import type { DashboardSnapshotPayload, DashboardState } from './store';
 
@@ -95,9 +96,35 @@ interface DashboardElements {
   toolExecutionListEl: HTMLElement | null;
   fileTrackingListEl: HTMLElement | null;
   sessionDetailListEl: HTMLElement | null;
+  updateAvailableBannerEl: HTMLElement | null;
+  updateAvailableTextEl: HTMLElement | null;
+  shutdownBannerEl: HTMLElement | null;
+  shutdownTextEl: HTMLElement | null;
 }
 
 type MetadataPanelKey = DashboardPanelDefinition['key'];
+
+/** Panel renderer lookup — hoisted to module scope so it is allocated once, not per render. */
+const PANEL_RENDERERS: Record<MetadataPanelKey, (s: DashboardState) => string> = {
+  cronListEl: renderCronRows,
+  providerListEl: renderProviderRows,
+  sessionListEl: renderSessionRows,
+  modelListEl: renderModelRows,
+  healthListEl: renderHealthRows,
+  statusListEl: renderStatusRows,
+  presenceListEl: renderPresenceRows,
+  usageCostListEl: renderUsageCostRows,
+  toolCatalogListEl: renderToolCatalogRows,
+  skillsListEl: renderSkillsRows,
+  channelsStatusListEl: renderChannelsStatusRows,
+  cronSchedulerListEl: renderCronSchedulerRows,
+  memoryStatusListEl: renderMemoryStatusRows,
+  configListEl: renderConfigRows,
+  permissionActivityListEl: renderPermissionActivityRows,
+  toolExecutionListEl: renderToolExecutionRows,
+  fileTrackingListEl: renderFileTrackingRows,
+  sessionDetailListEl: renderSessionDetailRows,
+};
 
 function queryElements(): DashboardElements {
   const elements: DashboardElements = {
@@ -139,11 +166,20 @@ function queryElements(): DashboardElements {
     toolExecutionListEl: null,
     fileTrackingListEl: null,
     sessionDetailListEl: null,
+    updateAvailableBannerEl: null,
+    updateAvailableTextEl: null,
+    shutdownBannerEl: null,
+    shutdownTextEl: null,
   };
 
   for (const panel of [...PUBLIC_DASHBOARD_PANELS, ...PRIVATE_DASHBOARD_PANELS]) {
     elements[panel.key as MetadataPanelKey] = document.querySelector(`#${panel.id}`);
   }
+
+  elements.updateAvailableBannerEl = document.querySelector('#update-available-banner');
+  elements.updateAvailableTextEl = document.querySelector('#update-available-text');
+  elements.shutdownBannerEl = document.querySelector('#shutdown-banner');
+  elements.shutdownTextEl = document.querySelector('#shutdown-text');
 
   return elements;
 }
@@ -186,6 +222,8 @@ function applySnapshotToStore(store: DashboardStore, snapshot: DashboardSnapshot
     configData: snapshot.configData,
     fileStatus: snapshot.fileStatus,
     sessionDetails: snapshot.sessionDetails,
+    updateAvailable: snapshot.updateAvailable,
+    shutdown: snapshot.shutdown,
   });
 }
 
@@ -199,7 +237,7 @@ interface GatewayDashboardOptions {
 
 export function initGatewayDashboard(options: GatewayDashboardOptions = {}): void {
   const elements = queryElements();
-  let enabledFilters = new Set(['cron', 'heartbeat', 'session', 'message', 'tool', 'permission', 'file', 'health', 'presence', 'other']);
+  let enabledFilters = new Set<string>(EVENT_BUCKETS);
   let fetchInFlight = false;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
@@ -291,27 +329,6 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       elements.eventListEl.innerHTML = renderEventRows(state, enabledFilters);
     }
 
-  const panelRenderers: Record<MetadataPanelKey, (s: typeof state) => string> = {
-    cronListEl: renderCronRows,
-    providerListEl: renderProviderRows,
-    sessionListEl: renderSessionRows,
-    modelListEl: renderModelRows,
-    healthListEl: renderHealthRows,
-    statusListEl: renderStatusRows,
-    presenceListEl: renderPresenceRows,
-    usageCostListEl: renderUsageCostRows,
-    toolCatalogListEl: renderToolCatalogRows,
-    skillsListEl: renderSkillsRows,
-    channelsStatusListEl: renderChannelsStatusRows,
-    cronSchedulerListEl: renderCronSchedulerRows,
-    memoryStatusListEl: renderMemoryStatusRows,
-    configListEl: renderConfigRows,
-    permissionActivityListEl: renderPermissionActivityRows,
-    toolExecutionListEl: renderToolExecutionRows,
-    fileTrackingListEl: renderFileTrackingRows,
-    sessionDetailListEl: renderSessionDetailRows,
-  };
-
     const panelCache = new Map<string, string>();
 
     const safeSetInnerHTML = (el: HTMLElement | null, html: string, cacheKey: string): void => {
@@ -326,7 +343,7 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       const el = elements[panel.key];
       if (el) {
         try {
-          safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
+          safeSetInnerHTML(el as HTMLElement, PANEL_RENDERERS[panel.key](state), panel.key);
         } catch (err) {
           console.error(`Panel ${panel.key} render failed:`, err);
           (el as HTMLElement).innerHTML = '<li class="text-red-400">Panel render error</li>';
@@ -337,7 +354,7 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (privateViewEnabled) {
       for (const panel of PRIVATE_DASHBOARD_PANELS) {
         const el = elements[panel.key];
-        if (el) safeSetInnerHTML(el as HTMLElement, panelRenderers[panel.key](state), panel.key);
+        if (el) safeSetInnerHTML(el as HTMLElement, PANEL_RENDERERS[panel.key](state), panel.key);
       }
     }
 
@@ -390,6 +407,30 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
                   ? 'Gateway error'
                   : 'Waiting for gateway...';
       elements.heroStatusTextEl.textContent = statusText;
+    }
+
+    // Update-available banner (R7)
+    if (elements.updateAvailableBannerEl && elements.updateAvailableTextEl) {
+      if (state.updateAvailable) {
+        const { currentVersion, latestVersion, channel } = state.updateAvailable;
+        elements.updateAvailableTextEl.textContent =
+          `OpenClaw ${latestVersion} available (current: ${currentVersion}, channel: ${channel})`;
+        elements.updateAvailableBannerEl.classList.remove('hidden');
+      } else {
+        elements.updateAvailableBannerEl.classList.add('hidden');
+      }
+    }
+
+    // Shutdown banner (R8)
+    if (elements.shutdownBannerEl && elements.shutdownTextEl) {
+      if (state.shutdown) {
+        const { reason, restartExpectedMs } = state.shutdown;
+        const eta = restartExpectedMs ? ` — expected back in ${Math.round(restartExpectedMs / 1000)}s` : '';
+        elements.shutdownTextEl.textContent = `Gateway restarting (${reason})${eta}`;
+        elements.shutdownBannerEl.classList.remove('hidden');
+      } else {
+        elements.shutdownBannerEl.classList.add('hidden');
+      }
     }
   };
 
@@ -446,13 +487,12 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       }
 
       store.markSnapshotSuccess();
-      const panelCount = PUBLIC_DASHBOARD_PANELS.length + 2 + (privateViewEnabled ? PRIVATE_DASHBOARD_PANELS.length + 1 : 0);
+      const panelCount = computePanelCount(privateViewEnabled);
       setText(elements.messageEl, privateViewEnabled
         ? `Connected via SSR. ${panelCount} panels visible with private view unlocked.`
         : `Connected via SSR. ${panelCount} public panels visible.`);
     } catch (err) {
       console.error('[clawsprawl] dashboard fetch error:', err);
-      store.setConnectionState('error');
       store.setConnectionState('error');
       setText(elements.messageEl, 'Failed to fetch dashboard data from server. Retrying...');
     } finally {

@@ -6,6 +6,7 @@ import type {
   RequestFrame,
   ResponseFrame,
 } from './types';
+import { createPrivateKey, sign as ed25519Sign } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Request ID generation
@@ -60,8 +61,20 @@ export function buildRequest(method: string, params?: unknown, idGenerator?: { n
   };
 }
 
-/** Current protocol version supported by this client. */
-export const PROTOCOL_VERSION = 3;
+/**
+ * Current protocol version supported by this client.
+ *
+ * OpenClaw gateways ≥ 2026.5.17 require protocol v4 (`MIN_CLIENT_PROTOCOL_VERSION = 4`).
+ * We send a negotiation range `minProtocol: 3, maxProtocol: 4` so the server can pick v4
+ * while remaining tolerant of a v3-era server during local dev fallbacks.
+ *
+ * v4 introduces chat-delta semantics (`deltaText`, `replace` flag on `chat`/`agent` events);
+ * clawsprawl buckets these events but does not render full transcript deltas yet.
+ */
+export const PROTOCOL_VERSION = 4;
+
+/** Lowest protocol version this client can negotiate. */
+export const MIN_PROTOCOL_VERSION = 3;
 
 /** Client version string sent in ConnectParams during handshake. */
 export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
@@ -77,9 +90,84 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  * @param options - Client options used to populate the connect parameters.
  * @returns The assembled {@link ConnectParams} for the handshake request.
  */
-export function buildConnectParams(options: GatewayClientOptions): ConnectParams {
+/**
+ * Normalize device metadata for auth payload (lowercase + trim, matching gateway).
+ */
+function normalizeDeviceMetadataForAuth(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/[A-Z]/g, (char) => String.fromCharCode(char.charCodeAt(0) + 32));
+}
+
+/**
+ * Build the v3 device auth signature payload string.
+ * The gateway reconstructs this exact string and verifies the signature against it.
+ */
+function buildDeviceAuthPayloadV3(params: {
+  deviceId: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  scopes: string[];
+  signedAtMs: number;
+  token: string;
+  nonce: string;
+  platform: string;
+  deviceFamily?: string;
+}): string {
+  const scopes = params.scopes.join(',');
+  const token = params.token ?? '';
+  const platform = normalizeDeviceMetadataForAuth(params.platform);
+  const deviceFamily = normalizeDeviceMetadataForAuth(params.deviceFamily);
+  return [
+    'v3',
+    params.deviceId,
+    params.clientId,
+    params.clientMode,
+    params.role,
+    scopes,
+    String(params.signedAtMs),
+    token,
+    params.nonce,
+    platform,
+    deviceFamily,
+  ].join('|');
+}
+
+/**
+ * Sign the connect challenge with an Ed25519 private key using the v3 payload format.
+ * Returns a base64url-encoded signature, or undefined if signing fails.
+ */
+function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyPem: string): { signature: string; signedAt: number } | undefined {
+  try {
+    const signedAt = Date.now();
+    const deviceId = options.deviceId!;
+    const payload = buildDeviceAuthPayloadV3({
+      deviceId,
+      clientId: options.clientId ?? 'gateway-client',
+      clientMode: options.clientMode ?? 'ui',
+      role: options.role ?? 'operator',
+      scopes: options.scopes ?? ['operator.read'],
+      signedAtMs: signedAt,
+      token: options.token ?? '',
+      nonce,
+      platform: typeof navigator !== 'undefined' ? navigator.platform ?? 'unknown' : 'server',
+    });
+    const key = createPrivateKey(Buffer.from(privateKeyPem, 'utf-8'));
+    const signature = ed25519Sign(undefined, Buffer.from(payload, 'utf-8'), key);
+    return { signature: signature.toString('base64url'), signedAt };
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildConnectParams(options: GatewayClientOptions, challengeNonce?: string): ConnectParams {
+  const signed = (challengeNonce && options.deviceId && options.devicePrivateKey)
+    ? signChallenge(options, challengeNonce, options.devicePrivateKey)
+    : undefined;
   return {
-    minProtocol: PROTOCOL_VERSION,
+    minProtocol: MIN_PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,
     client: {
       id: options.clientId ?? 'gateway-client',
@@ -88,9 +176,22 @@ export function buildConnectParams(options: GatewayClientOptions): ConnectParams
       mode: options.clientMode ?? 'ui',
       ...(options.clientDisplayName ? { displayName: options.clientDisplayName } : {}),
     },
-    ...(options.token ? { auth: { token: options.token } } : {}),
+    ...(options.token ? {
+      auth: {
+        token: options.token,
+        ...(options.deviceToken ? { deviceToken: options.deviceToken } : {}),
+      },
+    } : options.deviceToken ? { auth: { deviceToken: options.deviceToken } } : {}),
     role: options.role ?? 'operator',
     scopes: options.scopes ?? ['operator.read'],
+    ...(options.deviceId ? {
+      device: {
+        id: options.deviceId,
+        publicKey: options.devicePublicKey ?? '',
+        ...(challengeNonce ? { nonce: challengeNonce } : {}),
+        ...(signed ? { signature: signed.signature, signedAt: signed.signedAt } : {}),
+      },
+    } : {}),
   };
 }
 

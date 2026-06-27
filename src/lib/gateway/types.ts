@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// OpenClaw native WebSocket protocol types (protocol version 3)
+// OpenClaw native WebSocket protocol types (protocol version 4)
 // ---------------------------------------------------------------------------
 
 // --- Connection states ---
@@ -90,6 +90,17 @@ export interface ConnectAuth {
   deviceToken?: string;
 }
 
+/** Device identity for the connect handshake (v4 nonce signing). */
+export interface ConnectDevice {
+  id: string;
+  publicKey: string;
+  nonce?: string;
+  signature?: string;
+  signedAt?: number;
+  deviceFamily?: string;
+  modelIdentifier?: string;
+}
+
 /** Full connect request parameters (protocol version, client info, auth, scopes). */
 export interface ConnectParams {
   minProtocol: number;
@@ -99,6 +110,7 @@ export interface ConnectParams {
   role?: string;
   scopes?: string[];
   caps?: string[];
+  device?: ConnectDevice;
   locale?: string;
   userAgent?: string;
 }
@@ -169,11 +181,18 @@ export interface Snapshot {
   };
 }
 
-/** Auth tokens and scopes issued by the gateway in HelloOk. */
+/** Auth tokens and scopes issued by the gateway in HelloOk.
+ *
+ * On shared-secret/operator connects (the clawsprawl case — `auth.token` only, no
+ * `device` block), the gateway returns `{ role, scopes }` and omits `deviceToken`.
+ * `deviceToken` is only present after a paired-device connect. `deviceTokens[]`
+ * may be present during bootstrap handoff.
+ */
 export interface HelloOkAuth {
-  deviceToken: string;
   role: string;
   scopes: string[];
+  deviceToken?: string;
+  deviceTokens?: string[];
   issuedAtMs?: number;
 }
 
@@ -405,7 +424,15 @@ export interface GatewayClientOptions {
    * Typically set to the gateway's own HTTP base URL (e.g. `http://127.0.0.1:18789`).
    * Ignored in browser environments where the browser sets Origin automatically.
    */
-  origin?: string;
+   origin?: string;
+  /** Device ID for v4 device identity (enables non-loopback gateway support). */
+  deviceId?: string;
+  /** Device Ed25519 public key (PEM format) for v4 nonce signing. */
+  devicePublicKey?: string;
+  /** Device Ed25519 private key (PEM format) for signing the connect challenge. */
+  devicePrivateKey?: string;
+  /** Device token for reconnecting a previously-paired device. */
+  deviceToken?: string;
 }
 
 // --- Extended data summaries (from additional gateway RPCs) ---

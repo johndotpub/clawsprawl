@@ -1,0 +1,32 @@
+---
+import type { ClawSprawlTheme } from '../config/themes/types';
+
+interface Props {
+  themes: ClawSprawlTheme[];
+  activeId: string;
+}
+
+const { themes, activeId } = Astro.props;
+---
+
+<form
+  class="fixed right-3 top-3 z-50 print:hidden"
+  aria-label="Theme"
+  data-cs-theme-switcher
+>
+  <label
+    for="cs-theme-select"
+    class="mr-1 text-[10px] uppercase tracking-[0.18em] text-terminal-muted"
+  >theme</label>
+  <select
+    id="cs-theme-select"
+    name="cs-theme"
+    class="terminal-button bg-terminal-surface-2 px-2 py-1 text-[11px]"
+    autocomplete="off"
+    aria-label="Select dashboard theme"
+  >
+    {themes.map((t) => (
+      <option value={t.id} selected={t.id === activeId}>{t.label}</option>
+    ))}
+  </select>
+</form>

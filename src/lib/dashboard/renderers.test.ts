@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { DashboardState } from './store';
 import {
   connectionClass,
   escapeHtml,
@@ -28,7 +29,7 @@ import {
   renderUsageCostRows,
 } from './renderers';
 
-const baseState = {
+const baseState: DashboardState = {
   connectionState: 'connected',
   lastUpdatedAt: '2026-04-04T00:00:00.000Z',
   lastSuccessfulSnapshotAt: '2026-04-04T00:00:00.000Z',
@@ -54,7 +55,9 @@ const baseState = {
   configData: null,
   fileStatus: null,
   sessionDetails: null,
-} as const;
+  updateAvailable: null,
+  shutdown: null,
+};
 
 describe('dashboard renderers', () => {
   it('maps connection states to semantic classes', () => {
@@ -84,7 +87,7 @@ describe('dashboard renderers', () => {
         { type: 'event' as const, event: 'heartbeat', payload: { ok: true } },
         { type: 'event' as const, event: 'cron', payload: { status: 'error', detail: 'failed' } },
       ],
-    } as const;
+    } as DashboardState;
 
     const filteredRows = renderEventRows(state, new Set(['cron', 'other']));
 
@@ -253,6 +256,55 @@ describe('dashboard renderers', () => {
     expect(eventBucket('installation.updated')).toBe('other');
     expect(eventBucket('todo.updated')).toBe('other');
     expect(eventBucket('tui.toast.show')).toBe('other');
+  });
+
+  // Comprehensive event-bucket coverage for all 31 gateway event types
+  it.each([
+    // Unrestricted / transport
+    ['connect.challenge', 'handshake'],
+    ['tick', 'heartbeat'],
+    ['heartbeat', 'heartbeat'],
+    ['health', 'health'],
+    ['presence', 'presence'],
+    ['node.presence.alive', 'presence'],
+    ['shutdown', 'shutdown'],
+    ['update.available', 'update'],
+    ['payload.large', 'payload'],
+    // operator.read
+    ['cron', 'cron'],
+    ['sessions.changed', 'session'],
+    ['session.message', 'message'],
+    ['session.operation', 'session'],
+    ['session.tool', 'tool'],
+    ['agent', 'agent'],
+    ['chat', 'message'],
+    ['chat.send_timing', 'latency'],
+    ['chat.side_result', 'message'],
+    ['talk.event', 'voice'],
+    ['voicewake.changed', 'config'],
+    ['voicewake.routing.changed', 'config'],
+    // operator.approvals
+    ['exec.approval.requested', 'permission'],
+    ['exec.approval.resolved', 'permission'],
+    ['plugin.approval.requested', 'permission'],
+    ['plugin.approval.resolved', 'permission'],
+    // operator.pairing
+    ['node.pair.requested', 'pairing'],
+    ['node.pair.resolved', 'pairing'],
+    ['device.pair.requested', 'pairing'],
+    ['device.pair.resolved', 'pairing'],
+    // other broadcasts
+    ['node.invoke.request', 'node'],
+    ['talk.mode', 'voice'],
+    // fallback session.*
+    ['session.created', 'session'],
+    ['session.status', 'session'],
+    ['session.idle', 'session'],
+    // unknown
+    ['unknown.event', 'other'],
+    ['', 'other'],
+  ] as const)('buckets event "%s" as "%s"', (eventName, expectedBucket) => {
+    expect(eventBucket(eventName)).toBe(expectedBucket);
   });
 
   // --- formatAge ---

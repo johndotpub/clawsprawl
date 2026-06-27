@@ -15,6 +15,7 @@ This repository is published with a clean-room baseline release:
 - `0.42.0`: first public baseline release with live SSR dashboard, strict QA gates, docs/screenshots, and least-privilege default auth scope.
 - `0.42.1`: post-release hardening patch with CI/security stabilization and documentation IA cleanup.
 - `0.42.69`: comprehensive hardening release addressing 91 findings (2 critical, 8 high, 29 medium, 52 low) from full QA/security review.
+- `0.43.0`: protocol v4 upgrade, comprehensive event handling (31 event types), OpenTelemetry-focused observability, security hardening, and DRY/code-quality pass.
 
 ## Release Workflow
 

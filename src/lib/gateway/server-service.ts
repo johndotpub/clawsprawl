@@ -1,19 +1,22 @@
 /**
  * Server-side gateway service singleton.
  *
- * Maintains a persistent WebSocket connection **and** an SSE stream to the
- * OpenClaw gateway, caches the latest RPC results, and exposes methods for
- * Astro API routes to retrieve pre-normalized dashboard data. The WS carries
- * RPC responses + subscribed events, while the SSE stream provides the full
- * gateway event bus (tool executions, file edits, permissions, etc.).
- * The gateway token is read from the server-side `OPENCLAW_GATEWAY_TOKEN`
- * env var — it is NEVER exposed to the browser.
+ * Maintains a persistent WebSocket connection to the OpenClaw gateway, caches the
+ * latest RPC results, and exposes methods for Astro API routes to retrieve
+ * pre-normalized dashboard data. The WS carries RPC responses + broadcast events
+ * (tick, health, presence, agent, session.message, etc.). The gateway token is
+ * read from the server-side `OPENCLAW_GATEWAY_TOKEN` env var — it is NEVER exposed
+ * to the browser.
+ *
+ * Note: prior versions maintained a dual-stream (WS + SSE) architecture via
+ * `GET /event` on the gateway HTTP API. That SSE endpoint never existed in the
+ * canonical gateway surface — the event bus is WebSocket-only. The SSE client
+ * was retired in v0.43.0; all event ingestion now flows through `onEvent`.
  *
  * @module server-service
  */
 
 import { GatewayClient } from './client';
-import { GatewaySseClient } from './sse-client';
 import {
   normalizeAgents, normalizeChannelsStatus, normalizeConfigData, normalizeCronJobs,
   normalizeCronRuns, normalizeCronScheduler, normalizeFileStatus,
@@ -91,6 +94,8 @@ export interface DashboardSnapshot {
   serverVersion: string | null;
   availableMethods: string[];
   availableEvents: string[];
+  updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
+  shutdown: { reason: string; restartExpectedMs?: number } | null;
 }
 
 /** Listener for server-side events forwarded to browser SSE clients. @internal */
@@ -113,8 +118,6 @@ export type SnapshotUpdatedListener = () => void;
  */
 export class GatewayServerService {
   private client: GatewayClient;
-  private sseClient: GatewaySseClient;
-  private httpBaseUrl: string;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private invalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private refreshInFlight = false;
@@ -157,6 +160,8 @@ export class GatewayServerService {
     serverVersion: null,
     availableMethods: [],
     availableEvents: [],
+    updateAvailable: null,
+    shutdown: null,
   };
 
   constructor() {
@@ -169,14 +174,18 @@ export class GatewayServerService {
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: 'openclaw-control-ui',
-      clientMode: 'webchat',
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'openclaw-control-ui',
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'webchat',
       clientVersion: CLIENT_VERSION,
       clientDisplayName: 'ClawSprawl Dashboard (SSR)',
       role: 'operator',
       scopes: gatewayScopes,
       reconnect: true,
       origin: process.env.OPENCLAW_GATEWAY_HTTP_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
+      deviceId: process.env.CLAWSPRAWL_DEVICE_ID,
+      devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
+      devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
+      deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
     });
 
     this.client.onStateChange((state) => {
@@ -200,29 +209,9 @@ export class GatewayServerService {
     });
 
     this.client.onEvent((event) => {
+      this.handleGatewayEvent(event);
       this.pushEvent(event);
       this.scheduleInvalidation();
-    });
-
-    // --- SSE client for the gateway's full event bus ---
-    this.httpBaseUrl = process.env.OPENCLAW_GATEWAY_HTTP_URL
-      ?? SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL;
-
-    this.sseClient = new GatewaySseClient({
-      url: `${this.httpBaseUrl}/event`,
-      token: gatewayToken || undefined,
-      reconnect: true,
-    });
-
-    this.sseClient.onEvent((event) => {
-      this.pushEvent(event);
-      this.scheduleInvalidation();
-    });
-
-    this.sseClient.onStateChange((state) => {
-      if (state === 'error') {
-        console.warn('[clawsprawl:server] SSE stream error — will auto-reconnect.');
-      }
     });
   }
 
@@ -281,10 +270,12 @@ export class GatewayServerService {
       this.cache.availableMethods = helloOk.features?.methods ?? [];
       this.cache.availableEvents = helloOk.features?.events ?? [];
 
+      if (helloOk.snapshot?.updateAvailable) {
+        this.cache.updateAvailable = helloOk.snapshot.updateAvailable;
+      }
+
       await this.refreshData();
 
-      // Start SSE stream for gateway event bus (runs alongside WS)
-      void this.sseClient.connect();
       this.initialized = true;
     } catch (err) {
       console.warn('[clawsprawl:server] gateway bootstrap failed:', err);
@@ -345,6 +336,31 @@ export class GatewayServerService {
   }
 
   // --- Internal ---
+
+  /** Handle special gateway events that drive dedicated UI surfaces (banners, state). */
+  private handleGatewayEvent(event: EventFrame): void {
+    if (event.event === 'update.available') {
+      const payload = event.payload as Record<string, unknown> | undefined;
+      if (payload && typeof payload.latestVersion === 'string' && typeof payload.currentVersion === 'string') {
+        this.cache.updateAvailable = {
+          currentVersion: payload.currentVersion,
+          latestVersion: payload.latestVersion,
+          channel: typeof payload.channel === 'string' ? payload.channel : 'stable',
+        };
+      }
+    } else if (event.event === 'shutdown') {
+      const payload = event.payload as Record<string, unknown> | undefined;
+      this.cache.shutdown = {
+        reason: typeof payload?.reason === 'string' ? payload.reason : 'shutdown',
+        ...(typeof payload?.restartExpectedMs === 'number' ? { restartExpectedMs: payload.restartExpectedMs } : {}),
+      };
+    } else if (event.event === 'health' || event.event === 'tick') {
+      // Clear shutdown banner when gateway is alive again
+      if (this.cache.shutdown) {
+        this.cache.shutdown = null;
+      }
+    }
+  }
 
   /** Push an event into the ring buffer and notify SSE listeners. */
   private pushEvent(event: EventFrame): void {
@@ -418,7 +434,7 @@ export class GatewayServerService {
         this.client.call('cron.runs').catch(() => null),
         this.client.call('models.list').catch(() => null),
         this.client.call('health').catch(() => null),
-        this.client.call('presence.list').catch(() => null),
+        this.client.call('system-presence').catch(() => null),
         this.client.call('usage.cost').catch(() => null),
         this.client.call('usage.status').catch(() => null),
         this.client.call('tools.catalog').catch(() => null),
@@ -500,7 +516,6 @@ export class GatewayServerService {
       this.invalidationTimer = null;
     }
     this.client.disconnect();
-    this.sseClient.disconnect();
     this.snapshotListeners.clear();
     this.eventListeners.clear();
     _instance = null;

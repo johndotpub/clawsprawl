@@ -25,7 +25,7 @@ The dashboard currently consumes these methods:
 - `cron.runs`
 - `models.list`
 - `health`
-- `presence.list`
+- `system-presence`
 - `usage.cost`
 - `usage.status`
 - `tools.catalog`
@@ -81,10 +81,10 @@ cat <<'EOF' > /tmp/gateway-connect.json
   "method": "connect",
   "params": {
     "minProtocol": 3,
-    "maxProtocol": 3,
+    "maxProtocol": 4,
     "client": {
       "id": "openclaw-control-ui",
-      "version": "0.42.1",
+      "version": "0.43.0",
       "platform": "linux",
       "mode": "webchat"
     },

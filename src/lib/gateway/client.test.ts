@@ -7,7 +7,7 @@ import { resetRequestCounter } from './protocol';
 // ---------------------------------------------------------------------------
 const HELLO_OK_FIXTURE = {
   type: 'hello-ok' as const,
-  protocol: 3,
+  protocol: 4,
   server: { version: '2026.4.5', connId: 'test-conn-1' },
   features: { methods: ['status', 'agents.list'], events: ['tick', 'health'] },
   snapshot: {
@@ -128,7 +128,7 @@ describe('gateway client', () => {
     const helloOk = await connectPromise;
 
     expect(client.connectionState).toBe('connected');
-    expect(helloOk.protocol).toBe(3);
+    expect(helloOk.protocol).toBe(4);
     expect(helloOk.server.version).toBe('2026.4.5');
   });
 
@@ -156,7 +156,7 @@ describe('gateway client', () => {
     await connectPromise;
 
     expect(client.helloOk).not.toBeNull();
-    expect(client.helloOk?.protocol).toBe(3);
+    expect(client.helloOk?.protocol).toBe(4);
     expect(client.snapshot?.uptimeMs).toBe(1000);
     expect(client.availableMethods).toEqual(['status', 'agents.list']);
   });
@@ -295,8 +295,8 @@ describe('gateway client', () => {
 
   it('falls back to fallbackUrl when primary fails', async () => {
     const client = new GatewayClient({
-      url: 'ws://primary:18789/ws',
-      fallbackUrl: 'ws://fallback:18789/ws',
+      url: 'ws://127.0.0.1:18789/ws',
+      fallbackUrl: 'ws://localhost:18789/ws',
       reconnect: false,
       connectTimeoutMs: 5000,
     });
@@ -310,7 +310,7 @@ describe('gateway client', () => {
     await vi.advanceTimersByTimeAsync(0);
     const fallbackSocket = MockWebSocket.instances[1];
     expect(fallbackSocket).toBeTruthy();
-    expect(fallbackSocket?.url).toContain('fallback');
+    expect(fallbackSocket?.url).toBe('ws://localhost:18789/ws');
 
     fallbackSocket?.completeHandshake();
     await connectPromise;
@@ -636,9 +636,76 @@ describe('gateway client', () => {
       type: 'res',
       id: connectReq.id,
       ok: true,
-      payload: { protocol: 3, server: { version: '1.0' } },
+      payload: { protocol: 4, server: { version: '1.0' } },
     }));
 
     await expect(connectPromise).rejects.toThrow('Invalid HelloOk');
+  });
+
+  // --- Loopback-only nonce enforcement (H2) ---
+
+  it('rejects non-loopback gateway URLs without device identity', () => {
+    expect(() => verifyGatewayNonce('abc', 'wss://gateway.example.com/ws')).toThrow(/Non-loopback/);
+  });
+
+  it('allows loopback gateway URLs', () => {
+    expect(verifyGatewayNonce('abc', 'ws://localhost:18789/ws')).toBe(true);
+    expect(verifyGatewayNonce('abc', 'ws://127.0.0.1:18789/ws')).toBe(true);
+    expect(verifyGatewayNonce('abc', 'ws://0.0.0.0:18789/ws')).toBe(true);
+    expect(verifyGatewayNonce('abc', 'ws://[::1]:18789/ws')).toBe(true);
+  });
+
+  it('allows undefined gateway URL (no check)', () => {
+    expect(verifyGatewayNonce('abc')).toBe(true);
+    expect(verifyGatewayNonce('abc', undefined)).toBe(true);
+  });
+
+  it('allows malformed gateway URL (lets WS connect fail naturally)', () => {
+    expect(verifyGatewayNonce('abc', 'not-a-url')).toBe(true);
+  });
+
+  it('rejects non-loopback wss:// gateway URLs', () => {
+    expect(() => verifyGatewayNonce('abc', 'wss://gateway.openclaw.ai/ws')).toThrow(/Non-loopback/);
+    expect(() => verifyGatewayNonce('abc', 'ws://10.0.0.42:18789/ws')).toThrow(/Non-loopback/);
+  });
+
+  // --- Policy + retryable error metadata (M4/M5) ---
+
+  it('exposes policy from hello-ok after connect', async () => {
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const connectPromise = client.connect();
+    MockWebSocket.instances[0]?.completeHandshake();
+    await connectPromise;
+
+    expect(client.policy).not.toBeNull();
+    expect(client.policy?.tickIntervalMs).toBe(15_000);
+    expect(client.policy?.maxPayload).toBe(1_048_576);
+    expect(client.policy?.maxBufferedBytes).toBe(4_194_304);
+  });
+
+  it('surfaces retryable + retryAfterMs on rejected RPC errors', async () => {
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.completeHandshake();
+    await connectPromise;
+
+    const callPromise = client.call('status');
+    const reqId = JSON.parse(socket.sent.at(-1)!).id;
+    socket.triggerMessage(JSON.stringify({
+      type: 'res',
+      id: reqId,
+      ok: false,
+      error: { code: 'UNAVAILABLE', message: 'startup-sidecars', retryable: true, retryAfterMs: 2000 },
+    }));
+
+    try {
+      await callPromise;
+      expect.fail('should have rejected');
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error & { retryable?: boolean }).retryable).toBe(true);
+      expect((err as Error & { retryAfterMs?: number }).retryAfterMs).toBe(2000);
+    }
   });
 });

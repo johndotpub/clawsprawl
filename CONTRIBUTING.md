@@ -48,10 +48,18 @@ The browser never connects to the OpenClaw gateway directly.
 
 - [ ] `npm run test` passes
 - [ ] `npm run build` passes
-- [ ] `npm run qa:strict` passes (coverage gates enforced)
+- [ ] `npm run typecheck` passes (`astro check` — type errors in `.astro` + `.ts` files)
+- [ ] `npm run qa:strict` passes (lint + shellcheck + typecheck + coverage gates + docs coverage + build)
 - [ ] `npm run test:e2e` passes for UI/runtime changes
 - [ ] `docs/technical-design-plan.md` updated for new phases or architecture changes
 - [ ] `CHANGELOG.md` updated for release-worthy changes
+
+## Coverage Notes
+
+- Unit coverage gates: 84% lines/functions/statements, 82% branches (enforced in `vitest.config.ts`).
+- E2E runtime coverage gate: 80% (enforced in `tests/e2e/code-coverage.spec.ts`).
+- Docs coverage gate: 98% (enforced in `scripts/qa/docs-coverage.mjs`).
+- `coverage/` is gitignored — `npm run test:unit:coverage` writes artifacts there.
 
 ## Linting & Formatting
 

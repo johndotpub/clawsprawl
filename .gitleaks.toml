@@ -2,3 +2,11 @@
 paths = [
   "docs/heredoc-api-sourcecode.md"
 ]
+description = "Heredoc examples use placeholder tokens ($VAR, YOUR_...) — not real secrets"
+regexes = [
+  "(?i)\\$OPENCLAW_GATEWAY_TOKEN",
+  "(?i)YOUR_PRIVATE_TOKEN",
+  "(?i)your_gateway_token",
+  "(?i)your_private_bearer_token",
+  "(?i)OPENCLAW_GATEWAY_TOKEN="
+]

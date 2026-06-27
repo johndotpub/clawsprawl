@@ -8,6 +8,7 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 // https://astro.build/config
 export default defineConfig({
+  site: process.env.PUBLIC_SITE_URL ?? 'http://localhost:4321',
   output: 'server',
   adapter: node({ mode: 'standalone' }),
   vite: {

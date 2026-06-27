@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
 import {
   buildConnectParams,
   buildRequest,
@@ -54,8 +55,8 @@ describe('gateway protocol helpers', () => {
 
   // --- PROTOCOL_VERSION ---
 
-  it('exports protocol version 3', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+  it('exports protocol version 4', () => {
+    expect(PROTOCOL_VERSION).toBe(4);
   });
 
   // --- buildConnectParams ---
@@ -66,16 +67,16 @@ describe('gateway protocol helpers', () => {
       token: 'test-token-123',
       clientId: 'openclaw-control-ui',
       clientMode: 'webchat',
-      clientVersion: '0.42.69',
+      clientVersion: '0.43.0',
       role: 'operator',
       scopes: ['operator.read'],
     });
 
     expect(params.minProtocol).toBe(3);
-    expect(params.maxProtocol).toBe(3);
+    expect(params.maxProtocol).toBe(4);
     expect(params.client.id).toBe('openclaw-control-ui');
     expect(params.client.mode).toBe('webchat');
-    expect(params.client.version).toBe('0.42.69');
+    expect(params.client.version).toBe('0.43.0');
     expect(params.auth?.token).toBe('test-token-123');
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
@@ -88,7 +89,7 @@ describe('gateway protocol helpers', () => {
       url: 'ws://localhost:18789/ws',
       clientDisplayName: 'Sprawl Dashboard',
     });
-    expect((params.client as Record<string, unknown>).displayName).toBe('Sprawl Dashboard');
+    expect((params.client as unknown as Record<string, unknown>).displayName).toBe('Sprawl Dashboard');
   });
 
   it('omits displayName when clientDisplayName is not provided', () => {
@@ -154,7 +155,7 @@ describe('gateway protocol helpers', () => {
   it('uses sensible defaults for optional client options', () => {
     const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
     expect(params.client.id).toBe('gateway-client');
-    expect(params.client.version).toBe('0.42.69');
+    expect(params.client.version).toBe('0.43.0');
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
   });
@@ -321,6 +322,149 @@ describe('gateway protocol helpers', () => {
       const first = gen.next();
       const second = gen.next();
       expect(first).not.toBe(second);
+    });
+  });
+
+  // --- Device identity + auth (v4) ---
+
+  describe('device identity support', () => {
+    let testKeys: { publicKey: string; privateKey: string; deviceId: string };
+
+    function setupKeys() {
+      const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+      const pubPem = publicKey.export({ type: 'spki', format: 'pem' }) as string;
+      const privPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+      const raw = publicKey.export({ type: 'spki', format: 'der' });
+      const rawBytes = raw.subarray(-32);
+      const { createHash } = require('node:crypto');
+      const deviceId = createHash('sha256').update(rawBytes).digest('hex');
+      return { publicKey: pubPem, privateKey: privPem, deviceId };
+    }
+
+    beforeEach(() => {
+      testKeys = setupKeys();
+    });
+
+    it('includes device block when deviceId is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+      });
+      expect(params.device).toBeDefined();
+      expect(params.device?.id).toBe(testKeys.deviceId);
+      expect(params.device?.publicKey).toBe(testKeys.publicKey);
+    });
+
+    it('omits device block when no deviceId is provided', () => {
+      const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+      expect(params.device).toBeUndefined();
+    });
+
+    it('includes nonce in device block when challengeNonce is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      }, 'test-nonce-abc');
+      expect(params.device?.nonce).toBe('test-nonce-abc');
+    });
+
+    it('includes signature and signedAt when devicePrivateKey is provided with nonce', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      }, 'challenge-nonce-123');
+      expect(params.device?.signature).toBeDefined();
+      expect(typeof params.device?.signature).toBe('string');
+      expect(params.device?.signedAt).toBeDefined();
+      expect(typeof params.device?.signedAt).toBe('number');
+    });
+
+    it('omits signature when no devicePrivateKey is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+      }, 'challenge-nonce-123');
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
+    });
+
+    it('omits signature when no challengeNonce is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      });
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
+    });
+
+    it('includes deviceToken in auth when provided alongside token', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        deviceToken: 'device-token-xyz',
+      });
+      expect(params.auth?.token).toBe('gateway-token');
+      expect(params.auth?.deviceToken).toBe('device-token-xyz');
+    });
+
+    it('includes deviceToken in auth when provided without token', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceToken: 'device-token-xyz',
+      });
+      expect(params.auth?.token).toBeUndefined();
+      expect(params.auth?.deviceToken).toBe('device-token-xyz');
+    });
+
+    it('produces a verifiable Ed25519 signature', () => {
+      const { createPublicKey, verify } = require('node:crypto');
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        clientId: 'openclaw-control-ui',
+        clientMode: 'webchat',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+        scopes: ['operator.read'],
+      }, 'nonce-xyz');
+
+      // Reconstruct the v3 payload (matching the gateway's format)
+      const scopes = ['operator.read'].join(',');
+      // Match normalizeDeviceMetadataForAuth: lowercase + trim
+      const rawPlatform = typeof navigator !== 'undefined' ? (navigator.platform ?? 'unknown') : 'server';
+      const platform = rawPlatform.trim().toLowerCase();
+      const deviceFamily = '';
+      const payload = [
+        'v3', testKeys.deviceId, 'openclaw-control-ui', 'webchat', 'operator',
+        scopes, String(params.device?.signedAt), 'gateway-token', 'nonce-xyz',
+        platform, deviceFamily,
+      ].join('|');
+
+      const sig = Buffer.from(params.device!.signature!, 'base64url');
+      const pubKey = createPublicKey(testKeys.publicKey);
+      const valid = verify(undefined, Buffer.from(payload), pubKey, sig);
+      expect(valid).toBe(true);
+    });
+
+    it('returns undefined signature when private key is invalid', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: 'not-a-valid-key',
+      }, 'nonce-abc');
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
     });
   });
 });

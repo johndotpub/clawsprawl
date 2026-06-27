@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
 SESSION_NAME="clawsprawl"
 DEFAULT_PROFILE_ID="sprawl-lab"
+DEFAULT_THEME_ID="sprawl"
+THEME_ENV_KEY="PUBLIC_CLAWSPRAWL_THEME"
 LOCAL_PROFILE_ID="private-local"
 LOCAL_PROFILE_TARGET="$ROOT_DIR/src/config/profiles/private.local.ts"
 PROFILE_OVERRIDE=""
@@ -25,6 +27,9 @@ Commands:
   list-profiles            Show built-in profile ids
   init-local-profile       Create private local profile file
   set-profile              Persist PUBLIC_MAINFRAME_PROFILE in .env
+  theme list               List built-in theme ids
+  theme get                Show the persisted server-default theme id
+  theme set <id>           Persist PUBLIC_CLAWSPRAWL_THEME in .env
   qa                       Run normal QA (test + build + e2e)
   qa-strict                Run strict QA gates with coverage checks
   dev                      Start Astro dev server (SSR mode)
@@ -119,7 +124,10 @@ load_env() {
       line="${line%%#*}"
       line="${line%"${line##*[![:space:]]}"}"
       [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
-      eval "export $line"
+      # Safe KEY=VALUE export — no eval, no shell expansion of the value.
+      local key="${line%%=*}"
+      local val="${line#*=}"
+      export "$key=$val"
     done < "$ENV_FILE"
   fi
 
@@ -221,6 +229,7 @@ status() {
   echo "root: $ROOT_DIR"
   echo "env: $ENV_FILE"
   echo "profile: ${PUBLIC_MAINFRAME_PROFILE:-$DEFAULT_PROFILE_ID}"
+  echo "theme: ${PUBLIC_CLAWSPRAWL_THEME:-$DEFAULT_THEME_ID}"
   if [[ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ]]; then
     echo "gateway token: configured (server-side)"
   else
@@ -234,6 +243,44 @@ status() {
       echo "tmux session: not running ($SESSION_NAME)"
     fi
   fi
+}
+
+theme_list() {
+  echo "built-in themes:"
+  echo "- sprawl (default)        — neon green on black"
+  echo "- cyberpunk               — magenta/cyan neon"
+  echo "- midnight                — deep navy, cool blue"
+  echo "- ember                   — warm charcoal, amber/red"
+  echo "- mono                    — strict grayscale"
+  echo "- slate                   — desaturated blue-gray"
+}
+
+theme_get() {
+  load_env
+  echo "server-default theme: ${PUBLIC_CLAWSPRAWL_THEME:-$DEFAULT_THEME_ID}"
+}
+
+theme_set() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    echo "error: theme id required (see: cs-ops.sh theme list)" >&2
+    exit 1
+  fi
+  case "$id" in
+    sprawl|cyberpunk|midnight|ember|mono|slate) ;;
+    *) echo "error: unknown theme id: $id" >&2; theme_list; exit 1 ;;
+  esac
+  mkdir -p "$(dirname "$ENV_FILE")"
+  touch "$ENV_FILE"
+  local tmp_file="$ENV_FILE.tmp"
+  awk -v key="$THEME_ENV_KEY" -v val="$id" '
+    BEGIN { set = 0 }
+    $0 ~ "^" key "=" { print key "=" val; set = 1; next }
+    { print }
+    END { if (set == 0) print key "=" val }
+  ' "$ENV_FILE" > "$tmp_file"
+  mv "$tmp_file" "$ENV_FILE"
+  echo "theme set in $ENV_FILE -> $id"
 }
 
 COMMAND="${1:-help}"
@@ -267,6 +314,16 @@ case "$COMMAND" in
   set-profile)
     ensure_profile
     persist_profile
+    ;;
+  theme)
+    subcmd="${1:-}"
+    shift || true
+    case "$subcmd" in
+      list) theme_list ;;
+      get)  theme_get ;;
+      set)  theme_set "$@" ;;
+      *)    echo "error: unknown theme subcommand: $subcmd" >&2; theme_list; exit 1 ;;
+    esac
     ;;
   qa)
     run_in_root npm run qa

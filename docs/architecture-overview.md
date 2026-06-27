@@ -15,11 +15,10 @@ flowchart LR
   Gateway --> Cron[Cron + automation jobs]
 ```
 
-ClawSprawl maintains **two concurrent connections** to the OpenClaw gateway:
-1. **WebSocket (RPC channel)**: Used for request/response calls (`status`, `agents.list`, `config.get`, etc.) and subscribed event pushes. Managed by `GatewayClient`.
-2. **SSE (event stream)**: Used for the full gateway event bus (`tick`, `health`, `presence`, `agent`, `session.message`, etc.). Managed by `GatewaySseClient`.
+ClawSprawl maintains **one primary connection** to the OpenClaw gateway:
+1. **WebSocket (RPC + event channel)**: Used for request/response calls (`status`, `agents.list`, `config.get`, etc.) and all broadcast event pushes (`tick`, `health`, `presence`, `agent`, `session.message`, `shutdown`, `update.available`, etc.). Managed by `GatewayClient`.
 
-This dual-stream architecture ensures RPC calls are never blocked by event throughput, and SSE provides the complete event feed regardless of RPC subscriptions.
+The gateway event bus is delivered exclusively over WebSocket broadcast events. Prior versions maintained a dual-stream (WS + SSE) architecture via a `GET /event` HTTP endpoint; that endpoint never existed in the canonical gateway surface and the SSE client was retired in v0.43.0.
 
 ## Request and Session Flow
 
@@ -52,7 +51,7 @@ sequenceDiagram
 
 ## Challenge Nonce Verification
 
-The gateway sends a `connect.challenge` event with a `{ nonce, ts }` payload immediately after WebSocket upgrade. The client currently accepts this nonce without cryptographic verification — a MITM gateway could send any challenge and the client would comply. A future release should implement `verifyGatewayNonce` to validate the nonce against a pinned gateway identity (e.g., a public key fingerprint or HMAC) for mutual authentication.
+The gateway sends a `connect.challenge` event with a `{ nonce, ts }` payload immediately after WebSocket upgrade. clawsprawl connects device-less (no `device` block, shared-token loopback trust path) and enforces **loopback-only operation**: non-loopback `wss://` gateway URLs are rejected at handshake time with a clear error. Remote gateway support requires implementing device identity + v3 nonce signing (see roadmap).
 
 ## Module Anchors
 

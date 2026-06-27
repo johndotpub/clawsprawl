@@ -26,9 +26,17 @@ const {
   class="reveal-up"
   style="animation-delay: 240ms;"
 >
+  <div id="update-available-banner" class="hidden mb-3 rounded border border-terminal-amber bg-terminal-surface-2 px-4 py-2 text-xs text-terminal-amber" role="status" aria-live="polite">
+    <span id="update-available-text"></span>
+  </div>
+
+  <div id="shutdown-banner" class="hidden mb-3 rounded border border-terminal-error bg-terminal-surface-2 px-4 py-2 text-xs text-terminal-error" role="status" aria-live="assertive">
+    <span id="shutdown-text"></span>
+  </div>
+
   <div class="mb-3 flex items-end justify-between gap-4">
     <h2 class="section-title">Live Operations Dashboard</h2>
-    <p class="text-xs uppercase tracking-[0.18em] text-terminal-muted">Native protocol v3</p>
+    <p class="text-xs uppercase tracking-[0.18em] text-terminal-muted">Native protocol v4</p>
   </div>
 
   <div class="grid gap-4 lg:grid-cols-2">

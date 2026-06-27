@@ -33,7 +33,7 @@ export const GET: APIRoute = async ({ cookies }) => {
         send('gateway-event', {
           event: payload.event,
           payload: payload.payload,
-          seq: (payload as Record<string, unknown>).seq,
+          seq: (payload as unknown as Record<string, unknown>).seq,
         });
       });
 

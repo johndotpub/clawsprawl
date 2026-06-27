@@ -65,7 +65,7 @@ export function renderCronRows(state: DashboardState): string {
     const name = asString(job.name, 'cron-job');
     const jobId = asString(job.id, name);
     const schedule = typeof job.schedule === 'object' && job.schedule !== null
-      ? asString((job.schedule as Record<string, unknown>).expr, 'n/a')
+      ? asString((job.schedule as unknown as Record<string, unknown>).expr, 'n/a')
       : asString(job.schedule, 'n/a');
     const enabled = job.enabled !== false;
     const run_ = runByJob.get(jobId) ?? runByJob.get(name);
@@ -470,7 +470,7 @@ export function renderFileTrackingRows(state: DashboardState): string {
   if (state.fileStatus && state.fileStatus.length > 0) {
     parts.push(row([muted('📁 Modified files'), tag(`${state.fileStatus.length} files`)]));
     for (const file of state.fileStatus.slice(0, 20)) {
-      const statusTone: 'ok' | 'warn' | 'error' = file.status === 'modified' ? 'warn'
+      const statusTone: 'ok' | 'warn' | 'error' | 'muted' = file.status === 'modified' ? 'warn'
         : file.status === 'added' ? 'ok'
           : file.status === 'deleted' ? 'error' : 'muted';
       const fileParts: string[] = [label(file.path), badge(statusTone, file.status)];

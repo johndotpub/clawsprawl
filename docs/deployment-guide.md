@@ -30,6 +30,7 @@ cp .env.example .env
 - `CLAWSPRAWL_PRIVATE_TOKEN` (required for `token` mode)
 - `CLAWSPRAWL_SESSION_MAX_AGE_HOURS` (optional; default `24`, max `24`)
 - `PUBLIC_MAINFRAME_PROFILE` (optional; profile id)
+- `PUBLIC_CLAWSPRAWL_THEME` (optional; default `sprawl`; server-default theme id — browser localStorage overrides per-device)
 
 Template reference: [`../.env.example`](../.env.example)
 
@@ -79,7 +80,7 @@ npm run start
 Pull image:
 
 ```sh
-docker pull ghcr.io/johndotpub/clawsprawl:v0.42.1
+docker pull ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 Token mode example:
@@ -92,7 +93,7 @@ docker run --rm -p 4321:4321 \
   -e CLAWSPRAWL_MODE=token \
   -e CLAWSPRAWL_PRIVATE_TOKEN=your_private_bearer_token \
   -e CLAWSPRAWL_SESSION_MAX_AGE_HOURS=24 \
-  ghcr.io/johndotpub/clawsprawl:v0.42.1
+  ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 Public mode example:
@@ -101,7 +102,7 @@ Public mode example:
 docker run --rm -p 4321:4321 \
   -e OPENCLAW_GATEWAY_TOKEN=your_gateway_token \
   -e CLAWSPRAWL_MODE=public \
-  ghcr.io/johndotpub/clawsprawl:v0.42.1
+  ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 ## Ops Controller Script
@@ -119,6 +120,8 @@ Common commands:
 - `npm run ops -- tmux-up --local --auto-init-local`
 - `npm run ops -- tmux-up --profile-file /path/to/private-profile.ts`
 - `npm run ops -- dev --profile-file /path/to/private-profile.ts`
+- `npm run ops -- theme list`
+- `npm run ops -- theme set midnight`
 - `npm run ops -- qa-strict`
 
 ## Quality Gates
