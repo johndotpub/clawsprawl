@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
 import {
   buildConnectParams,
   buildRequest,
@@ -321,6 +322,149 @@ describe('gateway protocol helpers', () => {
       const first = gen.next();
       const second = gen.next();
       expect(first).not.toBe(second);
+    });
+  });
+
+  // --- Device identity + auth (v4) ---
+
+  describe('device identity support', () => {
+    let testKeys: { publicKey: string; privateKey: string; deviceId: string };
+
+    function setupKeys() {
+      const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+      const pubPem = publicKey.export({ type: 'spki', format: 'pem' }) as string;
+      const privPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+      const raw = publicKey.export({ type: 'spki', format: 'der' });
+      const rawBytes = raw.subarray(-32);
+      const { createHash } = require('node:crypto');
+      const deviceId = createHash('sha256').update(rawBytes).digest('hex');
+      return { publicKey: pubPem, privateKey: privPem, deviceId };
+    }
+
+    beforeEach(() => {
+      testKeys = setupKeys();
+    });
+
+    it('includes device block when deviceId is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+      });
+      expect(params.device).toBeDefined();
+      expect(params.device?.id).toBe(testKeys.deviceId);
+      expect(params.device?.publicKey).toBe(testKeys.publicKey);
+    });
+
+    it('omits device block when no deviceId is provided', () => {
+      const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+      expect(params.device).toBeUndefined();
+    });
+
+    it('includes nonce in device block when challengeNonce is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      }, 'test-nonce-abc');
+      expect(params.device?.nonce).toBe('test-nonce-abc');
+    });
+
+    it('includes signature and signedAt when devicePrivateKey is provided with nonce', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      }, 'challenge-nonce-123');
+      expect(params.device?.signature).toBeDefined();
+      expect(typeof params.device?.signature).toBe('string');
+      expect(params.device?.signedAt).toBeDefined();
+      expect(typeof params.device?.signedAt).toBe('number');
+    });
+
+    it('omits signature when no devicePrivateKey is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+      }, 'challenge-nonce-123');
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
+    });
+
+    it('omits signature when no challengeNonce is provided', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      });
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
+    });
+
+    it('includes deviceToken in auth when provided alongside token', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        deviceToken: 'device-token-xyz',
+      });
+      expect(params.auth?.token).toBe('gateway-token');
+      expect(params.auth?.deviceToken).toBe('device-token-xyz');
+    });
+
+    it('includes deviceToken in auth when provided without token', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceToken: 'device-token-xyz',
+      });
+      expect(params.auth?.token).toBeUndefined();
+      expect(params.auth?.deviceToken).toBe('device-token-xyz');
+    });
+
+    it('produces a verifiable Ed25519 signature', () => {
+      const { createPublicKey, verify } = require('node:crypto');
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        token: 'gateway-token',
+        clientId: 'openclaw-control-ui',
+        clientMode: 'webchat',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+        scopes: ['operator.read'],
+      }, 'nonce-xyz');
+
+      // Reconstruct the v3 payload (matching the gateway's format)
+      const scopes = ['operator.read'].join(',');
+      // Match normalizeDeviceMetadataForAuth: lowercase + trim
+      const rawPlatform = typeof navigator !== 'undefined' ? (navigator.platform ?? 'unknown') : 'server';
+      const platform = rawPlatform.trim().toLowerCase();
+      const deviceFamily = '';
+      const payload = [
+        'v3', testKeys.deviceId, 'openclaw-control-ui', 'webchat', 'operator',
+        scopes, String(params.device?.signedAt), 'gateway-token', 'nonce-xyz',
+        platform, deviceFamily,
+      ].join('|');
+
+      const sig = Buffer.from(params.device!.signature!, 'base64url');
+      const pubKey = createPublicKey(testKeys.publicKey);
+      const valid = verify(undefined, Buffer.from(payload), pubKey, sig);
+      expect(valid).toBe(true);
+    });
+
+    it('returns undefined signature when private key is invalid', () => {
+      const params = buildConnectParams({
+        url: 'ws://localhost:18789/ws',
+        deviceId: testKeys.deviceId,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: 'not-a-valid-key',
+      }, 'nonce-abc');
+      expect(params.device?.signature).toBeUndefined();
+      expect(params.device?.signedAt).toBeUndefined();
     });
   });
 });
