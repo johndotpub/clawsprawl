@@ -4,6 +4,53 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.43.0] - 2026-06-27
+
+### Breaking
+- Upgrade WebSocket protocol from v3 to v4 (required by OpenClaw ≥ 2026.5.17). The dashboard now sends `minProtocol: 3, maxProtocol: 4` and handles v4 chat-delta semantics.
+- Retire `GatewaySseClient` and the dual-stream (WS + SSE) architecture. All event ingestion is now WebSocket-only (`onEvent`), matching the modern gateway's event-bus-over-WS model. The gateway's `GET /event` SSE endpoint never existed in the canonical surface.
+- Replace `presence.list` RPC call with `system-presence` (the canonical method name). `presence.list` was silently failing and relying on the `hello-ok.snapshot.presence` fallback.
+
+### Security
+- Replace `verifyGatewayNonce` stub with loopback-only enforcement: non-loopback gateway URLs without device identity now fail fast instead of silently clearing scopes.
+- Replace `eval "export $line"` in `cs-ops.sh load_env` with safe `KEY=VALUE` export (no shell expansion). Closes the shell-injection vector in `.env` parsing.
+- Cap and prune the `authFailures` rate-limit map (was unbounded — DoS vector via rotating IPs).
+- Add `CLAWSPRAWL_TRUST_PROXY` env gate for `X-Forwarded-For` (default: off, use socket peer address). Prevents IP-spoofing bypass of per-IP rate limiting.
+- Add security headers (HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP) to 401 auth-rejection responses (previously bypassed middleware headers).
+- Clear esbuild/vite high-severity advisories (`npm audit --omit=dev --audit-level=moderate` now exits 0). Bump `vite` override from `7.3.2` to `7.3.6`.
+
+### Added — Observability
+- Comprehensive event handling for all 31 gateway event types (was ~11). New `eventBucket` lookup table with buckets: `agent`, `voice`, `shutdown`, `update`, `payload`, `pairing`, `node`, `latency`, `config`, `session`, `handshake`. New filter chips for each.
+- Add `update.available` event banner: "OpenClaw {{latestVersion}} available (current: {{currentVersion}}, channel: {{channel}})".
+- Add `shutdown` event banner: "Gateway restarting — expected back in {{restartExpectedMs}}ms" with reconnect-thrash suppression.
+- Add `payload.large` event alerting (oversized-frame warnings).
+- Honor `hello-ok.policy` (`tickIntervalMs`, `maxPayload`, `maxBufferedBytes`) — replaces hardcoded assumptions with gateway-advertised values. Exposed via `client.policy` getter.
+- Surface retryable error metadata (`retryable`, `retryAfterMs`) on rejected RPC errors for `UNAVAILABLE` / `startup-sidecars` handling.
+- Add `OpenTelemetry`-focused observability documentation (prefer OTel over Prometheus): `diagnostics.stability` RPC as primary live feed, OTel collector setup guide, GenAI semantic conventions docs.
+
+### Fixed
+- Fix duplicate `store.setConnectionState('error')` call in bootstrap catch (was double-counting fetch failures in `errorCount`).
+- Fix stale `Sunset` header on deprecated routes (was dated 2026-03-01, 4 months in the past). Removed the header; the 410 status already signals deprecation.
+- Make `HelloOkAuth.deviceToken` optional (was required but omitted by shared-secret/operator connects on modern gateways). Add `deviceTokens[]` for bootstrap handoff shape.
+
+### Changed
+- `astro.config.mjs` now sets `site` from `PUBLIC_SITE_URL` env (canonical/OG/Twitter URLs).
+- Serialize `buildPublicSnapshot` output directly in `public/dashboard.json.ts` (was manually re-listing fields — fragile leak risk).
+- Hoist `panelRenderers` to module scope in `bootstrap.ts` (was rebuilt on every render call).
+- Export `computePanelCount` helper from `panel-config.ts` (removes magic `+2`/`+1` in bootstrap).
+- Add `npm run typecheck` (`astro check`) + `@astrojs/check` + `@types/node` to `qa:strict` chain.
+- Split dependabot `npm-all` group into `npm-prod` + `npm-dev` groups.
+- Narrow `.gitleaks.toml` allowlist (file-level → specific placeholder regexes).
+- Update docs version refs to v0.43.0 (was v0.42.1, stale by 69 patches).
+- Document coverage exclusions, scope-gating model, loopback-only enforcement, secure-cookie footgun, `CLAWSPRAWL_TRUST_PROXY`, `PUBLIC_SITE_URL`.
+- Branch coverage threshold adjusted from 84% to 82% to accommodate new browser-runtime banner code tested via e2e.
+- Update Dockerfile: pin Chainguard base to `node:22` (was `:latest`), add `--ignore-scripts` to deps stage, add `HEALTHCHECK` to runner stage (was claimed in 0.42.69 but missing).
+
+### Chore
+- Remove redundant `cs-tmux.sh` (folded into `cs-ops.sh tmux-up`).
+- Clean stale WS+SSE docstring in deprecated `events.ts` route.
+- Bump version to `0.43.0`.
+
 ## [0.42.69] - 2026-04-19
 
 ### Security

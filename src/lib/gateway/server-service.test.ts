@@ -3,7 +3,7 @@ import { GatewayServerService } from './server-service';
 
 const HELLO_OK_FIXTURE = {
   type: 'hello-ok' as const,
-  protocol: 3,
+  protocol: 4,
   server: { version: '2026.4.8', connId: 'conn-1' },
   features: { methods: ['status'], events: ['tick'] },
   snapshot: {
@@ -29,7 +29,6 @@ describe('gateway server service initialization lifecycle', () => {
         call: ReturnType<typeof vi.fn>;
         connectionState: string;
       };
-      sseClient: { connect: ReturnType<typeof vi.fn> };
     };
 
     const connect = vi
@@ -42,14 +41,12 @@ describe('gateway server service initialization lifecycle', () => {
       call: vi.fn().mockResolvedValue(null),
       connectionState: 'connected',
     };
-    service.sseClient = { connect: vi.fn().mockResolvedValue(undefined) };
 
     await service.initialize();
     expect(service.getSnapshot().connectionState).toBe('error');
 
     await service.initialize();
     expect(connect).toHaveBeenCalledTimes(2);
-    expect(service.sseClient.connect).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot().lastSuccessfulSnapshotAt).not.toBeNull();
 
     await service.initialize();
@@ -59,7 +56,7 @@ describe('gateway server service initialization lifecycle', () => {
   it('deduplicates concurrent initialize calls into a single connect attempt', async () => {
     let resolveConnect: ((value: typeof HELLO_OK_FIXTURE) => void) | null = null;
     const connectPromise = new Promise<typeof HELLO_OK_FIXTURE>((resolve) => {
-      resolveConnect = resolve;
+      resolveConnect = resolve as (value: typeof HELLO_OK_FIXTURE) => void;
     });
 
     const service = new GatewayServerService() as unknown as {
@@ -69,7 +66,6 @@ describe('gateway server service initialization lifecycle', () => {
         call: ReturnType<typeof vi.fn>;
         connectionState: string;
       };
-      sseClient: { connect: ReturnType<typeof vi.fn> };
     };
 
     const connect = vi.fn<() => Promise<typeof HELLO_OK_FIXTURE>>().mockReturnValue(connectPromise);
@@ -78,18 +74,16 @@ describe('gateway server service initialization lifecycle', () => {
       call: vi.fn().mockResolvedValue(null),
       connectionState: 'connected',
     };
-    service.sseClient = { connect: vi.fn().mockResolvedValue(undefined) };
 
     const p1 = service.initialize();
     const p2 = service.initialize();
 
     expect(connect).toHaveBeenCalledTimes(1);
 
-    resolveConnect?.(HELLO_OK_FIXTURE);
+    resolveConnect!(HELLO_OK_FIXTURE);
     await Promise.all([p1, p2]);
 
     expect(connect).toHaveBeenCalledTimes(1);
-    expect(service.sseClient.connect).toHaveBeenCalledTimes(1);
   });
 
   it('captures events, sequences them, and trims to max buffer', () => {
@@ -232,5 +226,86 @@ describe('gateway server service initialization lifecycle', () => {
     const snapshot = service.getSnapshot();
     expect(snapshot.reconnectCount).toBeGreaterThanOrEqual(0);
     expect(snapshot.errorCount).toBeGreaterThanOrEqual(0);
+  });
+
+  // --- handleGatewayEvent: update.available + shutdown banners ---
+
+  it('handles update.available event and stores it in the snapshot', () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getSnapshot: () => { updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null };
+    };
+
+    service.handleGatewayEvent({
+      type: 'event',
+      event: 'update.available',
+      payload: { currentVersion: '2026.6.9', latestVersion: '2026.6.10', channel: 'stable' },
+    });
+
+    expect(service.getSnapshot().updateAvailable).toEqual({
+      currentVersion: '2026.6.9',
+      latestVersion: '2026.6.10',
+      channel: 'stable',
+    });
+  });
+
+  it('handles shutdown event and stores it in the snapshot', () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getSnapshot: () => { shutdown: { reason: string; restartExpectedMs?: number } | null };
+    };
+
+    service.handleGatewayEvent({
+      type: 'event',
+      event: 'shutdown',
+      payload: { reason: 'restart', restartExpectedMs: 5000 },
+    });
+
+    expect(service.getSnapshot().shutdown).toEqual({
+      reason: 'restart',
+      restartExpectedMs: 5000,
+    });
+  });
+
+  it('clears shutdown banner on health event', () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getSnapshot: () => { shutdown: { reason: string; restartExpectedMs?: number } | null };
+    };
+
+    service.handleGatewayEvent({ type: 'event', event: 'shutdown', payload: { reason: 'restart' } });
+    expect(service.getSnapshot().shutdown).not.toBeNull();
+
+    service.handleGatewayEvent({ type: 'event', event: 'health', payload: { ok: true } });
+    expect(service.getSnapshot().shutdown).toBeNull();
+  });
+
+  it('handles update.available with missing channel (defaults to stable)', () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getSnapshot: () => { updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null };
+    };
+
+    service.handleGatewayEvent({
+      type: 'event',
+      event: 'update.available',
+      payload: { currentVersion: '1.0', latestVersion: '2.0' },
+    });
+
+    expect(service.getSnapshot().updateAvailable).toEqual({
+      currentVersion: '1.0',
+      latestVersion: '2.0',
+      channel: 'stable',
+    });
+  });
+
+  it('ignores update.available with missing required fields', () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getSnapshot: () => { updateAvailable: unknown };
+    };
+
+    service.handleGatewayEvent({ type: 'event', event: 'update.available', payload: { foo: 'bar' } });
+    expect(service.getSnapshot().updateAvailable).toBeNull();
   });
 });

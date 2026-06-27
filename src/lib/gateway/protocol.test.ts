@@ -54,8 +54,8 @@ describe('gateway protocol helpers', () => {
 
   // --- PROTOCOL_VERSION ---
 
-  it('exports protocol version 3', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+  it('exports protocol version 4', () => {
+    expect(PROTOCOL_VERSION).toBe(4);
   });
 
   // --- buildConnectParams ---
@@ -66,16 +66,16 @@ describe('gateway protocol helpers', () => {
       token: 'test-token-123',
       clientId: 'openclaw-control-ui',
       clientMode: 'webchat',
-      clientVersion: '0.42.69',
+      clientVersion: '0.43.0',
       role: 'operator',
       scopes: ['operator.read'],
     });
 
     expect(params.minProtocol).toBe(3);
-    expect(params.maxProtocol).toBe(3);
+    expect(params.maxProtocol).toBe(4);
     expect(params.client.id).toBe('openclaw-control-ui');
     expect(params.client.mode).toBe('webchat');
-    expect(params.client.version).toBe('0.42.69');
+    expect(params.client.version).toBe('0.43.0');
     expect(params.auth?.token).toBe('test-token-123');
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
@@ -88,7 +88,7 @@ describe('gateway protocol helpers', () => {
       url: 'ws://localhost:18789/ws',
       clientDisplayName: 'Sprawl Dashboard',
     });
-    expect((params.client as Record<string, unknown>).displayName).toBe('Sprawl Dashboard');
+    expect((params.client as unknown as Record<string, unknown>).displayName).toBe('Sprawl Dashboard');
   });
 
   it('omits displayName when clientDisplayName is not provided', () => {
@@ -154,7 +154,7 @@ describe('gateway protocol helpers', () => {
   it('uses sensible defaults for optional client options', () => {
     const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
     expect(params.client.id).toBe('gateway-client');
-    expect(params.client.version).toBe('0.42.69');
+    expect(params.client.version).toBe('0.43.0');
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
   });

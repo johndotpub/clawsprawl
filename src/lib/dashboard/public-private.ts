@@ -142,8 +142,13 @@ function summarizePublicChannelStatus(snapshot: DashboardSnapshot): DashboardSna
   };
 }
 
+/** Public-safe snapshot fields — allows null for redacted fields (not just undefined). */
+type PublicSnapshot = {
+  [K in keyof DashboardSnapshot]: DashboardSnapshot[K] | null;
+};
+
 /** Serialize a public-safe dashboard snapshot for unauthenticated viewers. */
-export function buildPublicSnapshot(snapshot: DashboardSnapshot): Partial<DashboardSnapshot> {
+export function buildPublicSnapshot(snapshot: DashboardSnapshot): PublicSnapshot {
   return {
     connectionState: snapshot.connectionState,
     lastUpdatedAt: snapshot.lastUpdatedAt,
@@ -173,6 +178,8 @@ export function buildPublicSnapshot(snapshot: DashboardSnapshot): Partial<Dashbo
     serverVersion: null,
     availableMethods: [],
     availableEvents: [],
+    updateAvailable: snapshot.updateAvailable,
+    shutdown: snapshot.shutdown,
   };
 }
 

@@ -52,7 +52,12 @@ function safeTokenEqual(a: string, b: string): boolean {
 
 const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10;
 const AUTH_RATE_LIMIT_LOCKOUT_MS = 15 * 60 * 1000;
-const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+const AUTH_FAILURES_MAX_ENTRIES = 50_000;
+const AUTH_FAILURES_STALE_MS = 24 * 60 * 60 * 1000;
+const authFailures = new Map<string, { count: number; lockedUntil: number; lastSeenAt: number }>();
+
+const authFailuresPruneInterval = setInterval(() => pruneStaleAuthFailures(), SESSION_PRUNE_INTERVAL_MS);
+authFailuresPruneInterval.unref?.();
 
 export function checkAuthRateLimit(ip: string): boolean {
   const record = authFailures.get(ip);
@@ -62,12 +67,27 @@ export function checkAuthRateLimit(ip: string): boolean {
 }
 
 export function recordAuthFailure(ip: string): void {
-  const record = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
+  const now = Date.now();
+  const record = authFailures.get(ip) ?? { count: 0, lockedUntil: 0, lastSeenAt: now };
   record.count++;
+  record.lastSeenAt = now;
   if (record.count >= AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
-    record.lockedUntil = Date.now() + AUTH_RATE_LIMIT_LOCKOUT_MS;
+    record.lockedUntil = now + AUTH_RATE_LIMIT_LOCKOUT_MS;
   }
   authFailures.set(ip, record);
+  if (authFailures.size > AUTH_FAILURES_MAX_ENTRIES) {
+    pruneStaleAuthFailures(now);
+  }
+}
+
+function pruneStaleAuthFailures(now = Date.now()): void {
+  for (const [ip, record] of authFailures) {
+    const isLocked = record.lockedUntil && now < record.lockedUntil;
+    const isStale = (now - record.lastSeenAt) > AUTH_FAILURES_STALE_MS;
+    if (!isLocked && isStale) {
+      authFailures.delete(ip);
+    }
+  }
 }
 
 function normalizeMode(value: string | undefined): ClawSprawlMode {
@@ -145,7 +165,7 @@ export function isPrivateRouteAllowed(cookies: AstroCookies): boolean {
 
 export function isValidPrivateToken(token: string | undefined): boolean {
   const { mode, privateToken } = getAccessConfig();
-  return mode === 'token' && Boolean(privateToken) && safeTokenEqual(token?.trim() ?? '', privateToken);
+  return mode === 'token' && Boolean(privateToken) && safeTokenEqual(token?.trim() ?? '', privateToken ?? '');
 }
 
 export function readBearerToken(request: Request): string | undefined {
@@ -203,6 +223,13 @@ export function clearPrivateSessionsForTest(): void {
 export function createPrivateAuthRequiredResponse(): Response {
   return new Response(JSON.stringify({ ok: false, error: 'private-auth-required' }), {
     status: 401,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    },
   });
 }

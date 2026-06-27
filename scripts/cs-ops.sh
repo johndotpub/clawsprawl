@@ -119,7 +119,10 @@ load_env() {
       line="${line%%#*}"
       line="${line%"${line##*[![:space:]]}"}"
       [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
-      eval "export $line"
+      # Safe KEY=VALUE export — no eval, no shell expansion of the value.
+      local key="${line%%=*}"
+      local val="${line#*=}"
+      export "$key=$val"
     done < "$ENV_FILE"
   fi
 

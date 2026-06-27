@@ -4,11 +4,6 @@
  * Public/private realtime streams are now split across `/api/public/events`
  * and `/api/private/events` to avoid leaking private operational data.
  *
- * Event types sent to browser:
- * - `gateway-event` — real-time gateway event frames (from WS + SSE)
- * - `snapshot-updated` — signals that a fresh dashboard snapshot is available
- * - `ping` — keepalive (every 30s)
- *
  * @module api/events
  */
 
@@ -21,7 +16,6 @@ export const GET: APIRoute = async () => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
       'Deprecation': 'true',
-      'Sunset': 'Sat, 01 Mar 2026 00:00:00 GMT',
       'Link': '</api/public/events>; rel="successor-version"',
     },
   });

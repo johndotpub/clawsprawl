@@ -60,8 +60,20 @@ export function buildRequest(method: string, params?: unknown, idGenerator?: { n
   };
 }
 
-/** Current protocol version supported by this client. */
-export const PROTOCOL_VERSION = 3;
+/**
+ * Current protocol version supported by this client.
+ *
+ * OpenClaw gateways ≥ 2026.5.17 require protocol v4 (`MIN_CLIENT_PROTOCOL_VERSION = 4`).
+ * We send a negotiation range `minProtocol: 3, maxProtocol: 4` so the server can pick v4
+ * while remaining tolerant of a v3-era server during local dev fallbacks.
+ *
+ * v4 introduces chat-delta semantics (`deltaText`, `replace` flag on `chat`/`agent` events);
+ * clawsprawl buckets these events but does not render full transcript deltas yet.
+ */
+export const PROTOCOL_VERSION = 4;
+
+/** Lowest protocol version this client can negotiate. */
+export const MIN_PROTOCOL_VERSION = 3;
 
 /** Client version string sent in ConnectParams during handshake. */
 export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
@@ -79,7 +91,7 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  */
 export function buildConnectParams(options: GatewayClientOptions): ConnectParams {
   return {
-    minProtocol: PROTOCOL_VERSION,
+    minProtocol: MIN_PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,
     client: {
       id: options.clientId ?? 'gateway-client',

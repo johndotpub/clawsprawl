@@ -70,8 +70,18 @@ export const DASHBOARD_PANEL_DEFINITIONS: DashboardPanelDefinition[] = [
   { key: 'sessionDetailListEl', id: 'gateway-session-detail-list', title: '📋 Session Details', visibility: 'private', lockedReason: 'contains detailed session data', articleClassName: 'terminal-panel lg:col-span-2', listClassName: 'mt-3 max-h-64 space-y-2 overflow-auto text-xs text-terminal-muted' },
 ];
 
-/** Dashboard panel count shown in connection status copy. */
+/** Dashboard panel count shown in connection status copy.
+ *
+ * The +2 accounts for the custom agent list and activity feed panels that are
+ * authored directly in `GatewayBootstrap.astro` (not in `DASHBOARD_PANEL_DEFINITIONS`).
+ * The +1 for private view accounts for the activity feed panel.
+ */
 export const DASHBOARD_PANEL_COUNT = DASHBOARD_PANEL_DEFINITIONS.length + 2;
+
+/** Compute the total panel count for the current view mode. */
+export function computePanelCount(privateViewEnabled: boolean): number {
+  return PUBLIC_DASHBOARD_PANELS.length + 2 + (privateViewEnabled ? PRIVATE_DASHBOARD_PANELS.length + 1 : 0);
+}
 
 /** Panels that can be shown publicly without auth. */
 export const PUBLIC_DASHBOARD_PANELS = DASHBOARD_PANEL_DEFINITIONS.filter((panel) => panel.visibility === 'public');

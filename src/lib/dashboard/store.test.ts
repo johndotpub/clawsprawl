@@ -337,7 +337,7 @@ describe('dashboard store', () => {
     const store = new DashboardStore();
     store.setConfigData({ mode: 'full' });
     store.setFileStatus([{ path: 'src/main.ts', status: 'modified' }]);
-    store.setSessionDetails([{ key: 's1', status: 'running' }]);
+    store.setSessionDetails([{ key: 's1', agentId: 'ceo', status: 'running' }]);
 
     let calls = 0;
     store.subscribe(() => { calls += 1; });

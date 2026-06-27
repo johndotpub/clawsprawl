@@ -15,7 +15,6 @@ export const GET: APIRoute = async () => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
       'Deprecation': 'true',
-      'Sunset': 'Sat, 01 Mar 2026 00:00:00 GMT',
       'Link': '</api/private/health.json>; rel="successor-version"',
     },
   });

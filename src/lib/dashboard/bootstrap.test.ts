@@ -308,8 +308,8 @@ describe('initGatewayDashboard', () => {
     await flushAsyncWork();
 
     expect((window.location.reload as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
-    eventSources[0]?.onerror?.();
-    eventSources[1]?.onerror?.();
+    (eventSources[0] as { onerror?: () => void }).onerror?.();
+    (eventSources[1] as { onerror?: () => void }).onerror?.();
     expect(warnSpy).toHaveBeenCalled();
   });
 

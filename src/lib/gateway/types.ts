@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// OpenClaw native WebSocket protocol types (protocol version 3)
+// OpenClaw native WebSocket protocol types (protocol version 4)
 // ---------------------------------------------------------------------------
 
 // --- Connection states ---
@@ -169,11 +169,18 @@ export interface Snapshot {
   };
 }
 
-/** Auth tokens and scopes issued by the gateway in HelloOk. */
+/** Auth tokens and scopes issued by the gateway in HelloOk.
+ *
+ * On shared-secret/operator connects (the clawsprawl case — `auth.token` only, no
+ * `device` block), the gateway returns `{ role, scopes }` and omits `deviceToken`.
+ * `deviceToken` is only present after a paired-device connect. `deviceTokens[]`
+ * may be present during bootstrap handoff.
+ */
 export interface HelloOkAuth {
-  deviceToken: string;
   role: string;
   scopes: string[];
+  deviceToken?: string;
+  deviceTokens?: string[];
   issuedAtMs?: number;
 }
 

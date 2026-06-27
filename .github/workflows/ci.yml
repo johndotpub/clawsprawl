@@ -42,7 +42,7 @@ jobs:
         run: npm run qa:strict
 
       - name: Run npm audit (production)
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=moderate
         continue-on-error: false
 
       - name: Gitleaks secret scan

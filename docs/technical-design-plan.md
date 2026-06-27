@@ -38,7 +38,7 @@ ClawSprawl is an internal operations surface for OpenClaw clusters:
 ### Runtime Facts
 
 - Astro SSR server (`output: 'server'` with `@astrojs/node`)
-- Server connects to OpenClaw gateway via native WebSocket protocol v3
+- Server connects to OpenClaw gateway via native WebSocket protocol v4
 - Browser consumes split server APIs for public and private dashboard surfaces
 - Browser never connects directly to gateway and never receives gateway token
 - Dashboard updates in near real time via SSE + snapshot refresh
@@ -166,7 +166,7 @@ npm run docs:screenshots
 - `cron.runs`
 - `models.list`
 - `health`
-- `presence.list`
+- `system-presence`
 - `usage.cost`
 - `usage.status`
 - `tools.catalog`

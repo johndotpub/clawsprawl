@@ -79,7 +79,7 @@ npm run start
 Pull image:
 
 ```sh
-docker pull ghcr.io/johndotpub/clawsprawl:v0.42.1
+docker pull ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 Token mode example:
@@ -92,7 +92,7 @@ docker run --rm -p 4321:4321 \
   -e CLAWSPRAWL_MODE=token \
   -e CLAWSPRAWL_PRIVATE_TOKEN=your_private_bearer_token \
   -e CLAWSPRAWL_SESSION_MAX_AGE_HOURS=24 \
-  ghcr.io/johndotpub/clawsprawl:v0.42.1
+  ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 Public mode example:
@@ -101,7 +101,7 @@ Public mode example:
 docker run --rm -p 4321:4321 \
   -e OPENCLAW_GATEWAY_TOKEN=your_gateway_token \
   -e CLAWSPRAWL_MODE=public \
-  ghcr.io/johndotpub/clawsprawl:v0.42.1
+  ghcr.io/johndotpub/clawsprawl:v0.43.0
 ```
 
 ## Ops Controller Script

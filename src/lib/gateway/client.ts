@@ -18,17 +18,41 @@ import type {
 } from './types';
 
 /**
- * Verify the gateway challenge nonce for mutual authentication.
+ * Verify the gateway challenge nonce and enforce loopback-only operation.
  *
- * This stub exists to document the nonce verification path. In a future
- * release, the client should verify the nonce against a known gateway
- * identity (e.g., by checking a signature or comparing against a pinned
- * gateway public key) to prevent MITM gateway impersonation.
+ * clawsprawl connects device-less (no `device` block, `client.id: 'gateway-client'`,
+ * shared-token loopback trust path). The modern gateway requires nonce signing for
+ * any device-bearing client; device-less operator connects are only trusted on
+ * loopback (or via `trusted-proxy` / `allowInsecureAuth`). A non-loopback `wss://`
+ * gateway without device identity will clear scopes to empty and silently fail
+ * scope-gated RPCs/events.
  *
- * @param _nonce - The nonce string received in the connect.challenge event.
- * @returns `true` for now — always accepts the nonce until verification is implemented.
+ * This guard fails fast on non-loopback URLs so operators get a clear error instead
+ * of a silently-broken dashboard. Remote `wss://` support requires implementing
+ * device identity + v3 nonce signing (see roadmap).
+ *
+ * @param _nonce - The nonce string received in the connect.challenge event (unused
+ *   until device-auth is implemented).
+ * @param gatewayUrl - The gateway URL to check for loopback trust.
+ * @returns `true` if the gateway URL is loopback; throws on non-loopback without device identity.
  */
-export function verifyGatewayNonce(_nonce: string): boolean {
+export function verifyGatewayNonce(_nonce: string, gatewayUrl?: string): boolean {
+  if (!gatewayUrl) return true;
+  try {
+    const parsed = new URL(gatewayUrl);
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1';
+    if (!isLoopback) {
+      throw new Error(
+        `Non-loopback gateway URL (${host}) requires device identity + nonce signing. ` +
+        'clawsprawl currently supports loopback-only operation. ' +
+        'See docs/architecture-overview.md and roadmap for remote gateway support.',
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Non-loopback')) throw err;
+    // Malformed URL — let the WebSocket connect fail naturally
+  }
   return true;
 }
 
@@ -46,7 +70,7 @@ interface PendingRequest {
 }
 
 /**
- * GatewayClient speaks the native OpenClaw WebSocket protocol (v3).
+ * GatewayClient speaks the native OpenClaw WebSocket protocol (v4).
  *
  * Connection lifecycle:
  *   1. Open WebSocket to gateway URL
@@ -55,6 +79,9 @@ interface PendingRequest {
  *   4. Gateway responds with HelloOk (snapshot, features, policy) or error
  *   5. Steady state: client sends RequestFrames, gateway replies with ResponseFrames
  *      and pushes EventFrames (tick, health, presence, agent, session.message, etc.)
+ *
+ * Protocol v4 introduces chat-delta semantics (`deltaText`, `replace` flag); this
+ * client parses frames generically and leaves delta rendering to the dashboard layer.
  */
 export class GatewayClient {
   private readonly options: Required<
@@ -80,6 +107,9 @@ export class GatewayClient {
 
   /** Populated after a successful handshake. */
   private _helloOk: HelloOk | null = null;
+
+  /** Gateway-advertised policy limits (from hello-ok). */
+  private _policy: { tickIntervalMs: number; maxPayload: number; maxBufferedBytes: number } | null = null;
 
   constructor(options: GatewayClientOptions) {
     this.options = {
@@ -114,6 +144,11 @@ export class GatewayClient {
   /** List of methods the gateway advertised in HelloOk. */
   get availableMethods(): string[] {
     return this._helloOk?.features?.methods ?? [];
+  }
+
+  /** Gateway-advertised policy limits (tickIntervalMs, maxPayload, maxBufferedBytes). */
+  get policy(): { tickIntervalMs: number; maxPayload: number; maxBufferedBytes: number } | null {
+    return this._policy;
   }
 
   // --- Connection lifecycle ---
@@ -233,7 +268,7 @@ export class GatewayClient {
         reject(new Error(`RPC timeout: ${method}`));
       }, this.options.rpcTimeoutMs);
 
-      const entry = { resolve, reject, timeout };
+      const entry: PendingRequest = { resolve: resolve as (value: unknown) => void, reject, timeout };
       this.pending.set(request.id, entry);
 
       try {
@@ -254,7 +289,7 @@ export class GatewayClient {
       wsOptions.headers = { Origin: this.options.origin };
     }
     const ws = Object.keys(wsOptions).length > 0
-      ? new WebSocket(targetUrl, wsOptions as ConstructorParameters<typeof WebSocket>[1])
+      ? new WebSocket(targetUrl, wsOptions as unknown as ConstructorParameters<typeof WebSocket>[1])
       : new WebSocket(targetUrl);
     this.socket = ws;
 
@@ -304,6 +339,13 @@ export class GatewayClient {
             handshakeComplete = true;
             clearTimeout(timeout);
             this._helloOk = helloOk;
+            if (helloOk.policy) {
+              this._policy = {
+                tickIntervalMs: helloOk.policy.tickIntervalMs ?? 15_000,
+                maxPayload: helloOk.policy.maxPayload ?? 26_214_400,
+                maxBufferedBytes: helloOk.policy.maxBufferedBytes ?? 52_428_800,
+              };
+            }
             this.setState('connected');
     this.reconnectEnabled = this.options.reconnect;
     this.reconnectAttempts = 0;
@@ -335,7 +377,7 @@ export class GatewayClient {
     // Step 1: Gateway sends connect.challenge
     if (isConnectChallenge(frame)) {
       const nonce = frame.payload?.nonce ?? '';
-      if (!verifyGatewayNonce(nonce)) {
+      if (!verifyGatewayNonce(nonce, this.options.url)) {
         onError(new Error('Gateway nonce verification failed'));
         return;
       }
@@ -397,7 +439,12 @@ export class GatewayClient {
     if (!response.ok || response.error) {
       const errMsg = response.error?.message ?? 'Unknown error';
       const errCode = response.error?.code ?? 'UNKNOWN';
-      pending.reject(new Error(`${errCode}: ${errMsg}`));
+      const retryable = response.error?.retryable === true;
+      const retryAfterMs = response.error?.retryAfterMs;
+      const err = new Error(`${errCode}: ${errMsg}`) as Error & { retryable?: boolean; retryAfterMs?: number };
+      if (retryable) err.retryable = true;
+      if (typeof retryAfterMs === 'number') err.retryAfterMs = retryAfterMs;
+      pending.reject(err);
       return;
     }
 

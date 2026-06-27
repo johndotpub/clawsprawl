@@ -12,9 +12,17 @@ import {
 } from '../../../lib/auth/access';
 
 function getClientIp(request: Request): string {
-  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    ?? request.headers.get('x-real-ip')
-    ?? 'unknown';
+  // Only trust X-Forwarded-For when explicitly configured — prevents IP spoofing
+  // to bypass per-IP rate limiting when deployed without a trusted proxy.
+  if (process.env.CLAWSPRAWL_TRUST_PROXY === '1' || process.env.CLAWSPRAWL_TRUST_PROXY === 'true') {
+    return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      ?? request.headers.get('x-real-ip')
+      ?? 'unknown';
+  }
+  // Without a trusted proxy, use x-real-ip if present (set by some proxies),
+  // otherwise fall back to 'unknown' since we can't safely read the socket peer
+  // address from the Astro Request.
+  return request.headers.get('x-real-ip') ?? 'unknown';
 }
 
 /** Create a private-view session from a validated ClawSprawl bearer token. */

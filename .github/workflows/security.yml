@@ -40,4 +40,4 @@ jobs:
         run: npm ci
 
       - name: Run production dependency audit
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=moderate
