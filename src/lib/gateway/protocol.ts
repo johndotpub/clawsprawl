@@ -6,6 +6,7 @@ import type {
   RequestFrame,
   ResponseFrame,
 } from './types';
+import { sign as ed25519Sign } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Request ID generation
@@ -89,7 +90,22 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  * @param options - Client options used to populate the connect parameters.
  * @returns The assembled {@link ConnectParams} for the handshake request.
  */
-export function buildConnectParams(options: GatewayClientOptions): ConnectParams {
+/**
+ * Sign the connect challenge nonce with an Ed25519 private key.
+ * Returns a hex-encoded signature, or empty string if no key is available.
+ */
+function signNonce(nonce: string, privateKeyPem: string): string {
+  try {
+    const key = Buffer.from(privateKeyPem.replace(/\\n/g, '\n'), 'utf-8');
+    const signature = ed25519Sign(undefined, Buffer.from(nonce, 'utf-8'), key);
+    return signature.toString('hex');
+  } catch {
+    return '';
+  }
+}
+
+export function buildConnectParams(options: GatewayClientOptions, challengeNonce?: string): ConnectParams {
+  const signature = (challengeNonce && options.devicePrivateKey) ? signNonce(challengeNonce, options.devicePrivateKey) : undefined;
   return {
     minProtocol: MIN_PROTOCOL_VERSION,
     maxProtocol: PROTOCOL_VERSION,
@@ -100,9 +116,22 @@ export function buildConnectParams(options: GatewayClientOptions): ConnectParams
       mode: options.clientMode ?? 'ui',
       ...(options.clientDisplayName ? { displayName: options.clientDisplayName } : {}),
     },
-    ...(options.token ? { auth: { token: options.token } } : {}),
+    ...(options.token ? {
+      auth: {
+        token: options.token,
+        ...(options.deviceToken ? { deviceToken: options.deviceToken } : {}),
+      },
+    } : options.deviceToken ? { auth: { deviceToken: options.deviceToken } } : {}),
     role: options.role ?? 'operator',
     scopes: options.scopes ?? ['operator.read'],
+    ...(options.deviceId ? {
+      device: {
+        id: options.deviceId,
+        publicKey: options.devicePublicKey ?? '',
+        ...(challengeNonce ? { nonce: challengeNonce } : {}),
+        ...(signature ? { signature, signedAt: Date.now() } : {}),
+      },
+    } : {}),
   };
 }
 

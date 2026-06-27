@@ -174,14 +174,18 @@ export class GatewayServerService {
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: 'openclaw-control-ui',
-      clientMode: 'webchat',
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'openclaw-control-ui',
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'webchat',
       clientVersion: CLIENT_VERSION,
       clientDisplayName: 'ClawSprawl Dashboard (SSR)',
       role: 'operator',
       scopes: gatewayScopes,
       reconnect: true,
       origin: process.env.OPENCLAW_GATEWAY_HTTP_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
+      deviceId: process.env.CLAWSPRAWL_DEVICE_ID,
+      devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
+      devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
+      deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
     });
 
     this.client.onStateChange((state) => {

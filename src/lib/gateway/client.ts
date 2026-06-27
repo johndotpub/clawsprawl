@@ -381,7 +381,7 @@ export class GatewayClient {
         onError(new Error('Gateway nonce verification failed'));
         return;
       }
-      const connectParams = buildConnectParams(this.options);
+      const connectParams = buildConnectParams(this.options, nonce);
       const connectReq = buildRequest('connect', connectParams, this.requestIdGenerator);
 
       // Store pending so we can match the response
