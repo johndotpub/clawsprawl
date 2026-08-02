@@ -168,7 +168,7 @@ export function buildConnectParams(options: GatewayClientOptions, challengeNonce
     : undefined;
   return {
     minProtocol: MIN_PROTOCOL_VERSION,
-    maxProtocol: PROTOCOL_VERSION,
+    maxProtocol: options.maxProtocol ?? PROTOCOL_VERSION,
     client: {
       id: options.clientId ?? 'gateway-client',
       version: options.clientVersion ?? CLIENT_VERSION,
@@ -184,6 +184,7 @@ export function buildConnectParams(options: GatewayClientOptions, challengeNonce
     } : options.deviceToken ? { auth: { deviceToken: options.deviceToken } } : {}),
     role: options.role ?? 'operator',
     scopes: options.scopes ?? ['operator.read'],
+    ...(options.caps?.length ? { caps: options.caps } : {}),
     ...(options.deviceId ? {
       device: {
         id: options.deviceId,

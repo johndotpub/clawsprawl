@@ -40,6 +40,21 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
   return scopes.length > 0 ? scopes : undefined;
 }
 
+/**
+ * Parse the negotiated max protocol version from env.
+ *
+ * OpenClaw `main` tracks protocol v5 (unreleased); the dashboard ships v4 by
+ * default. When a v5 release ships, set `OPENCLAW_GATEWAY_MAX_PROTOCOL=5` to
+ * negotiate v5 without a code change. Must be >= `MIN_PROTOCOL_VERSION` (3);
+ * invalid values fall back to the compiled `PROTOCOL_VERSION`.
+ */
+function parseMaxProtocol(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 3) return undefined;
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -186,6 +201,12 @@ export class GatewayServerService {
       devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
       devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
       deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
+      // Advertise only capabilities the dashboard implements. `agent-kind` opts
+      // into the typed `agents.list` roster (system vs agent rows).
+      caps: ['agent-kind'],
+      // Forward-compat: allow negotiating a newer wire protocol via env when a
+      // future OpenClaw release bumps protocol v5, without a code change.
+      maxProtocol: parseMaxProtocol(process.env.OPENCLAW_GATEWAY_MAX_PROTOCOL),
     });
 
     this.client.onStateChange((state) => {

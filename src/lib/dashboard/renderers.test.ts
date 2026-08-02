@@ -75,6 +75,24 @@ describe('dashboard renderers', () => {
     expect(eventBucket('unknown.event')).toBe('other');
   });
 
+  it('buckets OpenClaw v4 config/catalog invalidation events', () => {
+    expect(eventBucket('config.changed')).toBe('config');
+    expect(eventBucket('skills.changed')).toBe('config');
+  });
+
+  it('buckets node presence broadcast + activity events', () => {
+    expect(eventBucket('node.presence')).toBe('presence');
+    expect(eventBucket('node.presence.activity')).toBe('presence');
+    expect(eventBucket('node.presence.alive')).toBe('presence');
+  });
+
+  it('buckets session approval, observer, and operator terminal events', () => {
+    expect(eventBucket('session.approval')).toBe('permission');
+    expect(eventBucket('session.observer')).toBe('session');
+    expect(eventBucket('terminal.data')).toBe('node');
+    expect(eventBucket('terminal.exit')).toBe('node');
+  });
+
   it('renders expected number of skeleton rows', () => {
     const rows = renderSkeletonRows(4);
     expect(rows.match(/skeleton-row/g)?.length).toBe(4);

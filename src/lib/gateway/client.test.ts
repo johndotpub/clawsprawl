@@ -708,4 +708,35 @@ describe('gateway client', () => {
       expect((err as Error & { retryAfterMs?: number }).retryAfterMs).toBe(2000);
     }
   });
+
+  it('surfaces structured error code + details (MISSING_SCOPE) on rejected RPC errors', async () => {
+    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.completeHandshake();
+    await connectPromise;
+
+    const callPromise = client.call('audit.activity.list');
+    const reqId = JSON.parse(socket.sent.at(-1)!).id;
+    socket.triggerMessage(JSON.stringify({
+      type: 'res',
+      id: reqId,
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'missing scope: operator.admin',
+        details: { code: 'MISSING_SCOPE', missingScope: 'operator.admin', requiredScopes: ['operator.admin'] },
+      },
+    }));
+
+    try {
+      await callPromise;
+      expect.fail('should have rejected');
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error & { code?: string }).code).toBe('FORBIDDEN');
+      const details = (err as Error & { details?: unknown }).details as { code?: string };
+      expect(details?.code).toBe('MISSING_SCOPE');
+    }
+  });
 });

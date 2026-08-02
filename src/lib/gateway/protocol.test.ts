@@ -97,6 +97,33 @@ describe('gateway protocol helpers', () => {
     expect('displayName' in params.client).toBe(false);
   });
 
+  it('advertises caps when provided', () => {
+    const params = buildConnectParams({
+      url: 'ws://localhost:18789/ws',
+      caps: ['agent-kind'],
+    });
+    expect(params.caps).toEqual(['agent-kind']);
+  });
+
+  it('omits caps when none are provided', () => {
+    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    expect('caps' in params).toBe(false);
+  });
+
+  it('negotiates a higher maxProtocol when provided (v5 forward-compat)', () => {
+    const params = buildConnectParams({
+      url: 'ws://localhost:18789/ws',
+      maxProtocol: 5,
+    });
+    expect(params.maxProtocol).toBe(5);
+    expect(params.minProtocol).toBe(3);
+  });
+
+  it('defaults maxProtocol to the compiled protocol version', () => {
+    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    expect(params.maxProtocol).toBe(4);
+  });
+
   it('reads navigator.platform when navigator is available', () => {
     const original = globalThis.navigator;
     try {

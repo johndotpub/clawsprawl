@@ -441,9 +441,17 @@ export class GatewayClient {
       const errCode = response.error?.code ?? 'UNKNOWN';
       const retryable = response.error?.retryable === true;
       const retryAfterMs = response.error?.retryAfterMs;
-      const err = new Error(`${errCode}: ${errMsg}`) as Error & { retryable?: boolean; retryAfterMs?: number };
+      const errDetails = response.error?.details;
+      const err = new Error(`${errCode}: ${errMsg}`) as Error & {
+        retryable?: boolean;
+        retryAfterMs?: number;
+        code?: string;
+        details?: unknown;
+      };
       if (retryable) err.retryable = true;
       if (typeof retryAfterMs === 'number') err.retryAfterMs = retryAfterMs;
+      err.code = errCode;
+      if (errDetails !== undefined) err.details = errDetails;
       pending.reject(err);
       return;
     }
