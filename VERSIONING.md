@@ -16,6 +16,7 @@ This repository is published with a clean-room baseline release:
 - `0.42.1`: post-release hardening patch with CI/security stabilization and documentation IA cleanup.
 - `0.42.69`: comprehensive hardening release addressing 91 findings (2 critical, 8 high, 29 medium, 52 low) from full QA/security review.
 - `0.43.0`: protocol v4 upgrade, comprehensive event handling (31 event types), OpenTelemetry-focused observability, security hardening, and DRY/code-quality pass.
+- `0.44.0`: Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and OpenClaw v2026.6/7 protocol-robustness catch-up (agent-kind cap, configurable maxProtocol for v5, structured MISSING_SCOPE, v4 event buckets).
 
 ## Release Workflow
 

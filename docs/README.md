@@ -2,7 +2,7 @@
 
 This directory contains operational, architectural, and extension documentation for the ClawSprawl dashboard.
 
-Last reviewed for release baseline: `v0.43.0`.
+Last reviewed for release baseline: `v0.44.0`.
 
 ## Start Here
 

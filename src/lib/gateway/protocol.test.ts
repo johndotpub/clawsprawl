@@ -10,6 +10,7 @@ import {
   isResponseFrame,
   parseMessage,
   PROTOCOL_VERSION,
+  CLIENT_VERSION,
   resetRequestCounter,
 } from './protocol';
 
@@ -182,7 +183,7 @@ describe('gateway protocol helpers', () => {
   it('uses sensible defaults for optional client options', () => {
     const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
     expect(params.client.id).toBe('gateway-client');
-    expect(params.client.version).toBe('0.43.0');
+    expect(params.client.version).toBe(CLIENT_VERSION);
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
   });

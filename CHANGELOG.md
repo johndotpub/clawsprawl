@@ -4,7 +4,9 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.44.0 «Uplink»] - 2026-08-02
+
+_Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and an OpenClaw v2026.6/7 protocol-robustness catch-up._
 
 ### Fixed — Dependencies & Security
 - Combine 8 open Dependabot PRs into a single update batch: `astro` ^6.4.8 → ^7.1.3, `@astrojs/node` ^10.1.3 → ^11.0.2, `@fontsource/jetbrains-mono` → ^5.3.0, `@tailwindcss/vite` → ^4.3.3, `@astrojs/check` → ^0.9.10, `@playwright/test` → ^1.62.0, `@types/node` → ^26.1.1, `@typescript-eslint/eslint-plugin`/`parser` → ^8.65.0, `@vitest/coverage-v8` → ^4.1.10, `eslint` → ^10.8.0, chainguard/node image digest, and `actions/setup-node` v6 → v7.

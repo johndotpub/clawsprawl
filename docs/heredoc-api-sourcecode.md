@@ -95,7 +95,7 @@ cat <<'EOF' > /tmp/gateway-connect.json
     "maxProtocol": 4,
     "client": {
       "id": "openclaw-control-ui",
-      "version": "0.43.0",
+      "version": "0.44.0",
       "platform": "linux",
       "mode": "webchat"
     },
