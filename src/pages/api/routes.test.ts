@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearPrivateSessionsForTest, PRIVATE_SESSION_COOKIE } from '../../lib/auth/access';
 import { initializeService } from '../../lib/gateway/server-service';
 import { GET as getDeprecatedDashboard } from './dashboard.json';
@@ -144,6 +144,13 @@ describe('api routes', () => {
     clearPrivateSessionsForTest();
     process.env.CLAWSPRAWL_MODE = 'token';
     process.env.CLAWSPRAWL_PRIVATE_TOKEN = 'private-token';
+    delete process.env.CLAWSPRAWL_SESSION_MAX_AGE_HOURS;
+  });
+
+  afterEach(() => {
+    // Restore env so mode/token mutations don't leak into other test files.
+    delete process.env.CLAWSPRAWL_MODE;
+    delete process.env.CLAWSPRAWL_PRIVATE_TOKEN;
     delete process.env.CLAWSPRAWL_SESSION_MAX_AGE_HOURS;
   });
 

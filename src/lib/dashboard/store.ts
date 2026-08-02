@@ -128,8 +128,11 @@ const DEFAULT_STATE: DashboardState = {
 /** Maximum events retained in the ring buffer (default 200). */
 const DEFAULT_MAX_EVENTS = 200;
 
-/** Maximum daily cost entries retained in usageCost.daily. */
-const MAX_DAILY_COST_ENTRIES = 365;
+/** Maximum daily entries retained in `usageCost.daily`. Exported for tests. */
+export const MAX_DAILY_COST_ENTRIES = 365;
+
+/** Default event-ring capacity. Exported for tests. */
+export { DEFAULT_MAX_EVENTS };
 
 /**
  * Reactive state store for the ClawSprawl dashboard.

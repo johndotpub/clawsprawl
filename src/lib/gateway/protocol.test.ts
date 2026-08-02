@@ -10,9 +10,13 @@ import {
   isResponseFrame,
   parseMessage,
   PROTOCOL_VERSION,
+  MIN_PROTOCOL_VERSION,
   CLIENT_VERSION,
   resetRequestCounter,
 } from './protocol';
+
+/** Shared gateway URL for connect-param fixtures (single source, no typo drift). */
+const TEST_URL = 'ws://localhost:18789/ws';
 
 describe('gateway protocol helpers', () => {
   beforeEach(() => {
@@ -64,20 +68,20 @@ describe('gateway protocol helpers', () => {
 
   it('builds connect params from client options', () => {
     const params = buildConnectParams({
-      url: 'ws://localhost:18789/ws',
+      url: TEST_URL,
       token: 'test-token-123',
       clientId: 'openclaw-control-ui',
       clientMode: 'webchat',
-      clientVersion: '0.43.0',
+      clientVersion: CLIENT_VERSION,
       role: 'operator',
       scopes: ['operator.read'],
     });
 
-    expect(params.minProtocol).toBe(3);
-    expect(params.maxProtocol).toBe(4);
+    expect(params.minProtocol).toBe(MIN_PROTOCOL_VERSION);
+    expect(params.maxProtocol).toBe(PROTOCOL_VERSION);
     expect(params.client.id).toBe('openclaw-control-ui');
     expect(params.client.mode).toBe('webchat');
-    expect(params.client.version).toBe('0.43.0');
+    expect(params.client.version).toBe(CLIENT_VERSION);
     expect(params.auth?.token).toBe('test-token-123');
     expect(params.role).toBe('operator');
     expect(params.scopes).toEqual(['operator.read']);
@@ -87,42 +91,42 @@ describe('gateway protocol helpers', () => {
 
   it('includes displayName when clientDisplayName is provided', () => {
     const params = buildConnectParams({
-      url: 'ws://localhost:18789/ws',
+      url: TEST_URL,
       clientDisplayName: 'Sprawl Dashboard',
     });
     expect((params.client as unknown as Record<string, unknown>).displayName).toBe('Sprawl Dashboard');
   });
 
   it('omits displayName when clientDisplayName is not provided', () => {
-    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    const params = buildConnectParams({ url: TEST_URL });
     expect('displayName' in params.client).toBe(false);
   });
 
   it('advertises caps when provided', () => {
     const params = buildConnectParams({
-      url: 'ws://localhost:18789/ws',
+      url: TEST_URL,
       caps: ['agent-kind'],
     });
     expect(params.caps).toEqual(['agent-kind']);
   });
 
   it('omits caps when none are provided', () => {
-    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    const params = buildConnectParams({ url: TEST_URL });
     expect('caps' in params).toBe(false);
   });
 
   it('negotiates a higher maxProtocol when provided (v5 forward-compat)', () => {
     const params = buildConnectParams({
-      url: 'ws://localhost:18789/ws',
+      url: TEST_URL,
       maxProtocol: 5,
     });
     expect(params.maxProtocol).toBe(5);
-    expect(params.minProtocol).toBe(3);
+    expect(params.minProtocol).toBe(MIN_PROTOCOL_VERSION);
   });
 
   it('defaults maxProtocol to the compiled protocol version', () => {
-    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
-    expect(params.maxProtocol).toBe(4);
+    const params = buildConnectParams({ url: TEST_URL });
+    expect(params.maxProtocol).toBe(PROTOCOL_VERSION);
   });
 
   it('reads navigator.platform when navigator is available', () => {
@@ -134,7 +138,7 @@ describe('gateway protocol helpers', () => {
         writable: true,
         configurable: true,
       });
-      const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+      const params = buildConnectParams({ url: TEST_URL });
       expect(params.client.platform).toBe('Linux x86_64');
     } finally {
       // Restore original navigator (undefined in Node)
@@ -159,7 +163,7 @@ describe('gateway protocol helpers', () => {
         writable: true,
         configurable: true,
       });
-      const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+      const params = buildConnectParams({ url: TEST_URL });
       expect(params.client.platform).toBe('unknown');
     } finally {
       if (original === undefined) {
@@ -176,12 +180,12 @@ describe('gateway protocol helpers', () => {
   });
 
   it('omits auth when no token is provided', () => {
-    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    const params = buildConnectParams({ url: TEST_URL });
     expect(params.auth).toBeUndefined();
   });
 
   it('uses sensible defaults for optional client options', () => {
-    const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+    const params = buildConnectParams({ url: TEST_URL });
     expect(params.client.id).toBe('gateway-client');
     expect(params.client.version).toBe(CLIENT_VERSION);
     expect(params.role).toBe('operator');
@@ -375,7 +379,7 @@ describe('gateway protocol helpers', () => {
 
     it('includes device block when deviceId is provided', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
       });
@@ -385,13 +389,13 @@ describe('gateway protocol helpers', () => {
     });
 
     it('omits device block when no deviceId is provided', () => {
-      const params = buildConnectParams({ url: 'ws://localhost:18789/ws' });
+      const params = buildConnectParams({ url: TEST_URL });
       expect(params.device).toBeUndefined();
     });
 
     it('includes nonce in device block when challengeNonce is provided', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
         devicePrivateKey: testKeys.privateKey,
@@ -401,7 +405,7 @@ describe('gateway protocol helpers', () => {
 
     it('includes signature and signedAt when devicePrivateKey is provided with nonce', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         token: 'gateway-token',
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
@@ -415,7 +419,7 @@ describe('gateway protocol helpers', () => {
 
     it('omits signature when no devicePrivateKey is provided', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
       }, 'challenge-nonce-123');
@@ -425,7 +429,7 @@ describe('gateway protocol helpers', () => {
 
     it('omits signature when no challengeNonce is provided', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
         devicePrivateKey: testKeys.privateKey,
@@ -436,7 +440,7 @@ describe('gateway protocol helpers', () => {
 
     it('includes deviceToken in auth when provided alongside token', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         token: 'gateway-token',
         deviceToken: 'device-token-xyz',
       });
@@ -446,7 +450,7 @@ describe('gateway protocol helpers', () => {
 
     it('includes deviceToken in auth when provided without token', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceToken: 'device-token-xyz',
       });
       expect(params.auth?.token).toBeUndefined();
@@ -456,7 +460,7 @@ describe('gateway protocol helpers', () => {
     it('produces a verifiable Ed25519 signature', () => {
       const { createPublicKey, verify } = require('node:crypto');
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         token: 'gateway-token',
         clientId: 'openclaw-control-ui',
         clientMode: 'webchat',
@@ -486,7 +490,7 @@ describe('gateway protocol helpers', () => {
 
     it('returns undefined signature when private key is invalid', () => {
       const params = buildConnectParams({
-        url: 'ws://localhost:18789/ws',
+        url: TEST_URL,
         deviceId: testKeys.deviceId,
         devicePublicKey: testKeys.publicKey,
         devicePrivateKey: 'not-a-valid-key',

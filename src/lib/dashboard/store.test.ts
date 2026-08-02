@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DashboardStore } from './store';
+import { DashboardStore, DEFAULT_MAX_EVENTS, MAX_DAILY_COST_ENTRIES } from './store';
 
 describe('dashboard store', () => {
   it('starts with idle defaults', () => {
@@ -89,7 +89,7 @@ describe('dashboard store', () => {
     }
 
     const events = store.getSnapshot().events;
-    expect(events).toHaveLength(200);
+    expect(events).toHaveLength(DEFAULT_MAX_EVENTS);
     expect(events[0]?.event).toBe('evt-259');
     expect(events[199]?.event).toBe('evt-60');
   });
@@ -457,7 +457,7 @@ describe('dashboard store', () => {
       totals: { input: 40000, output: 20000, cacheRead: 0, cacheWrite: 0, totalTokens: 60000, totalCost: 4 },
     });
 
-    expect(store.getSnapshot().usageCost?.daily).toHaveLength(365);
+    expect(store.getSnapshot().usageCost?.daily).toHaveLength(MAX_DAILY_COST_ENTRIES);
   });
 
   it('caps usageCost.daily in applySnapshot', () => {
@@ -481,7 +481,7 @@ describe('dashboard store', () => {
       },
     });
 
-    expect(store.getSnapshot().usageCost?.daily).toHaveLength(365);
+    expect(store.getSnapshot().usageCost?.daily).toHaveLength(MAX_DAILY_COST_ENTRIES);
   });
 
   it('does not cap short usageCost.daily', () => {

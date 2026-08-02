@@ -48,7 +48,7 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
  * negotiate v5 without a code change. Must be >= `MIN_PROTOCOL_VERSION` (3);
  * invalid values fall back to the compiled `PROTOCOL_VERSION`.
  */
-function parseMaxProtocol(value: string | undefined): number | undefined {
+export function parseMaxProtocol(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 3) return undefined;

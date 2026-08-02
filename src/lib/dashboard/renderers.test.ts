@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardState } from './store';
 import {
   connectionClass,
@@ -28,6 +28,7 @@ import {
   renderToolExecutionRows,
   renderUsageCostRows,
 } from './renderers';
+import { SESSION_DISPLAY_LIMIT, extractTimestamp } from './renderers/shared';
 
 const baseState: DashboardState = {
   connectionState: 'connected',
@@ -325,23 +326,53 @@ describe('dashboard renderers', () => {
     expect(eventBucket(eventName)).toBe(expectedBucket);
   });
 
-  // --- formatAge ---
+  // --- formatAge (deterministic via fake timers to avoid wall-clock flakiness) ---
 
-  it('formats ages correctly for various time ranges', () => {
-    const now = Date.now();
-    expect(formatAge(now - 5_000)).toBe('5s ago');
-    expect(formatAge(now - 120_000)).toBe('2m ago');
-    expect(formatAge(now - 3_600_000)).toBe('1h ago');
-    expect(formatAge(now - 86_400_000)).toBe('1d ago');
-    expect(formatAge(now - 172_800_000)).toBe('2d ago');
+  describe('formatAge', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(1_700_000_000_000));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('formats ages correctly for various time ranges', () => {
+      const now = Date.now();
+      expect(formatAge(now - 5_000)).toBe('5s ago');
+      expect(formatAge(now - 120_000)).toBe('2m ago');
+      expect(formatAge(now - 3_600_000)).toBe('1h ago');
+      expect(formatAge(now - 86_400_000)).toBe('1d ago');
+      expect(formatAge(now - 172_800_000)).toBe('2d ago');
+    });
+
+    it('returns "just now" for future timestamps', () => {
+      expect(formatAge(Date.now() + 10_000)).toBe('just now');
+    });
+
+    it('formats zero seconds as "0s ago"', () => {
+      expect(formatAge(Date.now())).toBe('0s ago');
+    });
   });
 
-  it('returns "just now" for future timestamps', () => {
-    expect(formatAge(Date.now() + 10_000)).toBe('just now');
+  // --- extractTimestamp ---
+
+  it('extractTimestamp prefers payload.ts over seq', () => {
+    const ts = extractTimestamp({ ts: 1_700_000_000_000 }, 1);
+    expect(typeof ts).toBe('string');
+    expect(ts).not.toBe('now');
+    expect(ts).toMatch(/:/);
   });
 
-  it('formats zero seconds as "0s ago"', () => {
-    expect(formatAge(Date.now())).toBe('0s ago');
+  it('extractTimestamp falls back to seq when ts is absent', () => {
+    const ts = extractTimestamp({}, 1_700_000_000_000);
+    expect(typeof ts).toBe('string');
+    expect(ts).not.toBe('now');
+    expect(ts).toMatch(/:/);
+  });
+
+  it('extractTimestamp returns "now" when neither ts nor seq is numeric', () => {
+    expect(extractTimestamp({}, 'not-a-number')).toBe('now');
   });
 
   // --- formatContextWindow ---
@@ -399,7 +430,7 @@ describe('dashboard renderers', () => {
   });
 
   it('truncates sessions beyond display limit', () => {
-    const sessions = Array.from({ length: 55 }, (_, i) => ({
+    const sessions = Array.from({ length: SESSION_DISPLAY_LIMIT + 5 }, (_, i) => ({
       key: `s-${i}`, agentId: 'ceo', displayName: `Session ${i}`,
     }));
     const state = { ...baseState, sessions };
@@ -1142,7 +1173,7 @@ describe('dashboard renderers', () => {
   });
 
   it('truncates session details beyond display limit', () => {
-    const sessions = Array.from({ length: 55 }, (_, i) => ({
+    const sessions = Array.from({ length: SESSION_DISPLAY_LIMIT + 5 }, (_, i) => ({
       key: `s-${i}`, agentId: 'ceo', status: 'running', displayName: `Session ${i}`,
     }));
     const state = { ...baseState, sessionDetails: sessions };

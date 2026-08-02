@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GatewayServerService } from './server-service';
+import { GatewayServerService, parseMaxProtocol } from './server-service';
+import { PROTOCOL_VERSION } from './protocol';
 
 const HELLO_OK_FIXTURE = {
   type: 'hello-ok' as const,
-  protocol: 4,
+  protocol: PROTOCOL_VERSION,
   server: { version: '2026.4.8', connId: 'conn-1' },
   features: { methods: ['status'], events: ['tick'] },
   snapshot: {
@@ -206,27 +207,22 @@ describe('gateway server service initialization lifecycle', () => {
 
   it('tracks reconnect and error counters through state transitions', () => {
     const service = new GatewayServerService() as unknown as {
-      client: {
-        onStateChange: (listener: (state: string) => void) => void;
-      };
+      client: { stateListeners: Set<(state: string) => void> };
       getSnapshot: () => { reconnectCount: number; errorCount: number };
     };
 
-    const listeners: Array<(state: string) => void> = [];
-    service.client.onStateChange = (listener) => {
-      listeners.push(listener);
-    };
-
-    // constructor wiring already happened; invoke tracked listener paths manually
-    for (const listener of listeners) {
+    // Drive the REAL state-change listener the constructor registered
+    // (previous version replaced onStateChange after construction, so its
+    // listener list was empty and the >= 0 assertions were tautological).
+    const before = service.getSnapshot();
+    for (const listener of service.client.stateListeners) {
       listener('reconnecting');
       listener('error');
     }
-
-    const snapshot = service.getSnapshot();
-    expect(snapshot.reconnectCount).toBeGreaterThanOrEqual(0);
-    expect(snapshot.errorCount).toBeGreaterThanOrEqual(0);
-  });
+    const after = service.getSnapshot();
+    expect(after.reconnectCount).toBe(before.reconnectCount + 1);
+    expect(after.errorCount).toBe(before.errorCount + 1);
+  })
 
   // --- handleGatewayEvent: update.available + shutdown banners ---
 
@@ -307,5 +303,25 @@ describe('gateway server service initialization lifecycle', () => {
 
     service.handleGatewayEvent({ type: 'event', event: 'update.available', payload: { foo: 'bar' } });
     expect(service.getSnapshot().updateAvailable).toBeNull();
+  });
+});
+
+
+describe('parseMaxProtocol (OPENCLAW_GATEWAY_MAX_PROTOCOL)', () => {
+  it('accepts integers >= 3 (MIN_PROTOCOL_VERSION)', () => {
+    expect(parseMaxProtocol('3')).toBe(3);
+    expect(parseMaxProtocol('4')).toBe(4);
+    expect(parseMaxProtocol('5')).toBe(5);
+  });
+
+  it('rejects values below the minimum protocol version', () => {
+    expect(parseMaxProtocol('2')).toBeUndefined();
+    expect(parseMaxProtocol('0')).toBeUndefined();
+  });
+
+  it('rejects non-numeric and empty input', () => {
+    expect(parseMaxProtocol('abc')).toBeUndefined();
+    expect(parseMaxProtocol('')).toBeUndefined();
+    expect(parseMaxProtocol(undefined)).toBeUndefined();
   });
 });

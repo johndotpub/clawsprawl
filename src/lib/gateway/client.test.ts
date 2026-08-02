@@ -1,13 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GatewayClient, verifyGatewayNonce } from './client';
-import { resetRequestCounter } from './protocol';
+import { PROTOCOL_VERSION, resetRequestCounter } from './protocol';
+import { canTransitionConnectionState } from './state-machine';
+import type { GatewayClientOptions } from './types';
+
+/** Shared gateway URL for client fixtures. */
+const TEST_URL = 'ws://localhost:18789/ws';
+
+/** Factory for the repeated client options used across most tests. */
+function makeClient(overrides: Partial<GatewayClientOptions> = {}): GatewayClient {
+  return new GatewayClient({
+    url: TEST_URL,
+    reconnect: false,
+    connectTimeoutMs: 5000,
+    ...overrides,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Minimal HelloOk fixture matching the real gateway response shape
 // ---------------------------------------------------------------------------
 const HELLO_OK_FIXTURE = {
   type: 'hello-ok' as const,
-  protocol: 4,
+  protocol: PROTOCOL_VERSION,
   server: { version: '2026.4.5', connId: 'test-conn-1' },
   features: { methods: ['status', 'agents.list'], events: ['tick', 'health'] },
   snapshot: {
@@ -121,19 +136,19 @@ describe('gateway client', () => {
   // --- Connection lifecycle ---
 
   it('connects via challenge-response handshake and transitions to connected', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
 
     MockWebSocket.instances[0]?.completeHandshake();
     const helloOk = await connectPromise;
 
     expect(client.connectionState).toBe('connected');
-    expect(helloOk.protocol).toBe(4);
+    expect(helloOk.protocol).toBe(PROTOCOL_VERSION);
     expect(helloOk.server.version).toBe('2026.4.5');
   });
 
   it('transitions through handshaking state during connect', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const states: string[] = [];
     client.onStateChange((s) => states.push(s));
 
@@ -146,7 +161,7 @@ describe('gateway client', () => {
   });
 
   it('populates helloOk, snapshot, and availableMethods after connect', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     expect(client.helloOk).toBeNull();
     expect(client.snapshot).toBeNull();
     expect(client.availableMethods).toEqual([]);
@@ -156,7 +171,7 @@ describe('gateway client', () => {
     await connectPromise;
 
     expect(client.helloOk).not.toBeNull();
-    expect(client.helloOk?.protocol).toBe(4);
+    expect(client.helloOk?.protocol).toBe(PROTOCOL_VERSION);
     expect(client.snapshot?.uptimeMs).toBe(1000);
     expect(client.availableMethods).toEqual(['status', 'agents.list']);
   });
@@ -164,7 +179,7 @@ describe('gateway client', () => {
   // --- RPC calls ---
 
   it('sends native request frames and resolves response payloads', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -183,7 +198,7 @@ describe('gateway client', () => {
   });
 
   it('times out rpc requests when no response arrives', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000, rpcTimeoutMs: 100 });
+    const client = makeClient({ rpcTimeoutMs: 100 });
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
@@ -195,7 +210,7 @@ describe('gateway client', () => {
   });
 
   it('rejects pending call when response contains an error', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -218,12 +233,12 @@ describe('gateway client', () => {
   });
 
   it('rejects call() when socket is not connected', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     await expect(client.call('status')).rejects.toThrow('Socket is not connected');
   });
 
   it('rejects all pending calls on disconnect()', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
@@ -281,7 +296,7 @@ describe('gateway client', () => {
   // --- Disconnect ---
 
   it('transitions to disconnected after disconnect()', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
@@ -320,7 +335,7 @@ describe('gateway client', () => {
   // --- Events ---
 
   it('emits native event frames to registered listeners', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -337,7 +352,7 @@ describe('gateway client', () => {
   // --- Subscriptions ---
 
   it('unsubscribes state and event listeners correctly', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
 
     const states: string[] = [];
     const unsub = client.onStateChange((s) => states.push(s));
@@ -355,7 +370,7 @@ describe('gateway client', () => {
   // --- Timeout ---
 
   it('connection times out when handshake never completes', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 50 });
+    const client = makeClient({ connectTimeoutMs: 50 });
     const connectPromise = client.connect();
     // Open socket but never send challenge
     MockWebSocket.instances[0]?.triggerOpen();
@@ -368,7 +383,7 @@ describe('gateway client', () => {
   // --- Malformed messages ---
 
   it('ignores malformed messages without crashing', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -410,7 +425,7 @@ describe('gateway client', () => {
   // --- Coverage gap: connect() when already connected (lines 104-105) ---
 
   it('returns cached helloOk when connect() called while already connected', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -426,7 +441,7 @@ describe('gateway client', () => {
   // --- Coverage gap: onEvent unsubscribe (line 149) ---
 
   it('stops receiving events after onEvent unsubscribe', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -448,7 +463,7 @@ describe('gateway client', () => {
   // --- Coverage gap: handshake failure path (lines 232-235) ---
 
   it('rejects connect when server responds with error during handshake', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
 
@@ -487,7 +502,7 @@ describe('gateway client', () => {
     // does NOT fire before the inner handshake pending timeout (line 265).
     // Both use connectTimeoutMs, but the inner one is created AFTER the
     // challenge arrives (so it starts later). We advance time in two steps.
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 500 });
+    const client = makeClient({ connectTimeoutMs: 500 });
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
 
@@ -557,37 +572,19 @@ describe('gateway client', () => {
 
   // --- Coverage gap: invalid state transition guard (line 338) ---
 
-  it('silently ignores invalid state transitions', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
-    const states: string[] = [];
-    client.onStateChange((s) => states.push(s));
-
-    // Initial state is 'idle'
-    expect(states).toEqual(['idle']);
-
-    // Connect — should go through connecting → handshaking → connected
-    const connectPromise = client.connect();
-    MockWebSocket.instances[0]?.completeHandshake();
-    await connectPromise;
-
-    expect(states).toContain('connected');
-
-    // 'connected' → 'idle' is NOT in the transition matrix
-    // We can't directly call setState since it's private, but we can verify
-    // that the client doesn't transition to invalid states by checking
-    // the state doesn't change to 'idle' during normal operations
-    // The guard is exercised when scheduleReconnect sets 'reconnecting'
-    // from a state that doesn't allow it — let's force that scenario:
-    // disconnect sets state to 'disconnected', then trying to set 'handshaking'
-    // directly wouldn't work. The guard prevents it silently.
-    client.disconnect();
-    expect(client.connectionState).toBe('disconnected');
-    // After disconnect, the state machine is in 'disconnected'. The only way
-    // to hit the guard (line 338) is when setState is called with a state
-    // that's not in the allowed transitions. Let's verify the client stays
-    // stable — 'idle' is not reachable from 'disconnected'.
-    expect(states).not.toContain('error');
-  });
+  it('rejects invalid state transitions via the state-machine guard', () => {
+    // The client's private setState delegates to canTransitionConnectionState.
+    // Verify the guard directly (the source of truth) rather than a
+    // tautological integration path that never triggers an invalid transition.
+    // Valid transitions are allowed ...
+    expect(canTransitionConnectionState('idle', 'connecting')).toBe(true);
+    expect(canTransitionConnectionState('handshaking', 'connected')).toBe(true);
+    expect(canTransitionConnectionState('connected', 'reconnecting')).toBe(true);
+    // ... while illegal jumps are silently rejected by the guard.
+    expect(canTransitionConnectionState('connected', 'idle')).toBe(false);
+    expect(canTransitionConnectionState('disconnected', 'handshaking')).toBe(false);
+    expect(canTransitionConnectionState('error', 'connected')).toBe(false);
+  })
 
   // --- verifyGatewayNonce stub ---
 
@@ -599,7 +596,7 @@ describe('gateway client', () => {
   // --- ws.send() error handling in call() ---
 
   it('rejects RPC when ws.send() throws on connected socket', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000, rpcTimeoutMs: 500 });
+    const client = makeClient({ rpcTimeoutMs: 500 });
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -612,7 +609,7 @@ describe('gateway client', () => {
   // --- HelloOk validation ---
 
   it('rejects handshake when hello-ok payload lacks type field', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
 
@@ -672,7 +669,7 @@ describe('gateway client', () => {
   // --- Policy + retryable error metadata (M4/M5) ---
 
   it('exposes policy from hello-ok after connect', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
@@ -684,7 +681,7 @@ describe('gateway client', () => {
   });
 
   it('surfaces retryable + retryAfterMs on rejected RPC errors', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
@@ -710,7 +707,7 @@ describe('gateway client', () => {
   });
 
   it('surfaces structured error code + details (MISSING_SCOPE) on rejected RPC errors', async () => {
-    const client = new GatewayClient({ url: 'ws://localhost:18789/ws', reconnect: false, connectTimeoutMs: 5000 });
+    const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
