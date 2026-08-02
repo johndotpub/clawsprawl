@@ -36,16 +36,22 @@ The dashboard currently consumes these methods:
 - `config.get`
 - `agents.files.list`
 
-Methods available upstream and under consideration for future ClawSprawl use:
+Methods available upstream and now **stable/callable** (operator.read unless noted) — candidates for future ClawSprawl panels:
 
-- `sessions.usage`
-- `sessions.usage.timeseries`
-- `sessions.usage.logs`
-- `commands.list`
-- `tools.effective`
-- `tts.status`
-- `tts.providers`
-- `last-heartbeat`
+- `sessions.usage` / `sessions.usage.timeseries` / `sessions.usage.logs` — per-session usage (private)
+- `commands.list` — runtime command inventory per agent (private)
+- `tools.effective` — session-scoped effective tool inventory (private)
+- `tts.status` / `tts.providers` — TTS enabled state + provider inventory (private)
+- `last-heartbeat` — latest persisted heartbeat (private)
+- `diagnostics.stability` — bounded, payload-free stability recorder; recommended WS live-feed RPC (private)
+- `tasks.list` / `tasks.get` — task ledger; `tasks.cancel` (operator.write) (private)
+- `audit.activity.list` — durable metadata-only activity ledger (private)
+- `agents.workspace.list` / `agents.workspace.get` — read-only workspace file browsing (private)
+- `artifacts.list` / `artifacts.get` / `artifacts.download` — transcript-derived artifacts (private)
+- `gateway.identity.get` — gateway device identity (private)
+- `logs.tail` — configured gateway log tail (private)
+
+Methods removed/renamed upstream (do not call): `node.pair.request` / `node.pair.verify` (removed in 2026.7 — use `node.pair.list/approve/reject/remove` + `node.pair.requested/resolved` events); `sessions.observer.ask` (use `sessions.companion.ask`).
 
 And listens for event stream messages such as:
 
@@ -54,6 +60,11 @@ And listens for event stream messages such as:
 - `session.message`
 - `health`
 - `presence`
+- `config.changed`
+- `skills.changed`
+- `sessions.changed`
+- `node.presence` / `node.presence.activity`
+- `talk.event`
 
 ClawSprawl does **not** expose the raw gateway event feed publicly. Public browsers receive only invalidation events from `/api/public/events`; raw gateway events remain private-only.
 
