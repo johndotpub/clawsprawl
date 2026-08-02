@@ -45,6 +45,10 @@ jobs:
         run: npm audit --omit=dev --audit-level=moderate
         continue-on-error: false
 
+      - name: Run full dependency audit (prod + dev)
+        run: npm run audit
+        continue-on-error: false
+
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v3
         env:
