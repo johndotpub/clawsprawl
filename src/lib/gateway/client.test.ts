@@ -584,7 +584,7 @@ describe('gateway client', () => {
     expect(canTransitionConnectionState('connected', 'idle')).toBe(false);
     expect(canTransitionConnectionState('disconnected', 'handshaking')).toBe(false);
     expect(canTransitionConnectionState('error', 'connected')).toBe(false);
-  })
+  });
 
   // --- verifyGatewayNonce stub ---
 

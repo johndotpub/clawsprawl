@@ -222,7 +222,7 @@ describe('gateway server service initialization lifecycle', () => {
     const after = service.getSnapshot();
     expect(after.reconnectCount).toBe(before.reconnectCount + 1);
     expect(after.errorCount).toBe(before.errorCount + 1);
-  })
+  });
 
   // --- handleGatewayEvent: update.available + shutdown banners ---
 
