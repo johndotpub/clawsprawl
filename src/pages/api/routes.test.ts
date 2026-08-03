@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { APIContext } from 'astro';
+import type { GatewayServerService } from '../../lib/gateway/server-service';
 import { clearPrivateSessionsForTest, PRIVATE_SESSION_COOKIE } from '../../lib/auth/access';
 import { initializeService } from '../../lib/gateway/server-service';
 import { GET as getDeprecatedDashboard } from './dashboard.json';
@@ -155,13 +157,13 @@ describe('api routes', () => {
   });
 
   it('returns 410 for deprecated mixed routes', async () => {
-    expect((await getDeprecatedDashboard({} as any)).status).toBe(410);
-    expect((await getDeprecatedEvents({} as any)).status).toBe(410);
-    expect((await getDeprecatedHealth({} as any)).status).toBe(410);
+    expect((await getDeprecatedDashboard({} as unknown as APIContext)).status).toBe(410);
+    expect((await getDeprecatedEvents({} as unknown as APIContext)).status).toBe(410);
+    expect((await getDeprecatedHealth({} as unknown as APIContext)).status).toBe(410);
   });
 
   it('serializes public dashboard snapshot without private fields', async () => {
-    const response = await getPublicDashboard({} as any);
+    const response = await getPublicDashboard({} as unknown as APIContext);
     expect(response.status).toBe(200);
 
     const json = await response.json();
@@ -194,9 +196,9 @@ describe('api routes', () => {
 
   it('requires private auth for private snapshot and health', async () => {
     const cookies = createCookies();
-    expect((await getPrivateDashboard({ cookies } as any)).status).toBe(401);
-    expect((await getPrivateHealth({ cookies } as any)).status).toBe(401);
-    expect((await getPrivateEvents({ cookies } as any)).status).toBe(401);
+    expect((await getPrivateDashboard({ cookies } as unknown as APIContext)).status).toBe(401);
+    expect((await getPrivateHealth({ cookies } as unknown as APIContext)).status).toBe(401);
+    expect((await getPrivateEvents({ cookies } as unknown as APIContext)).status).toBe(401);
   });
 
   it('returns private snapshot and health when authenticated', async () => {
@@ -207,10 +209,10 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer private-token' },
       }),
       cookies,
-    } as any);
+    } as unknown as APIContext);
 
-    const dashboard = await getPrivateDashboard({ cookies } as any);
-    const health = await getPrivateHealth({ cookies } as any);
+    const dashboard = await getPrivateDashboard({ cookies } as unknown as APIContext);
+    const health = await getPrivateHealth({ cookies } as unknown as APIContext);
     expect(dashboard.status).toBe(200);
     expect(health.status).toBe(200);
 
@@ -235,7 +237,7 @@ describe('api routes', () => {
         availableMethods: ['status'],
         availableEvents: ['tick'],
       }),
-    } as any);
+    } as unknown as GatewayServerService);
 
     const cookies = createCookies();
     await postPrivateSession({
@@ -244,9 +246,9 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer private-token' },
       }),
       cookies,
-    } as any);
+    } as unknown as APIContext);
 
-    const health = await getPrivateHealth({ cookies } as any);
+    const health = await getPrivateHealth({ cookies } as unknown as APIContext);
     expect(health.status).toBe(503);
     expect((await health.json()).ok).toBe(false);
   });
@@ -257,7 +259,7 @@ describe('api routes', () => {
     const unauthorized = await postPrivateSession({
       request: new Request('http://localhost/api/private/session', { method: 'POST', body: JSON.stringify({ token: 'bad' }), headers: { 'Content-Type': 'application/json' } }),
       cookies,
-    } as any);
+    } as unknown as APIContext);
     expect(unauthorized.status).toBe(401);
 
     const authorized = await postPrivateSession({
@@ -266,11 +268,11 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer private-token' },
       }),
       cookies,
-    } as any);
+    } as unknown as APIContext);
     expect(authorized.status).toBe(200);
     expect(cookies.jar.get(PRIVATE_SESSION_COOKIE)).toBeTruthy();
 
-    const logout = await deletePrivateSession({ cookies } as any);
+    const logout = await deletePrivateSession({ cookies } as unknown as APIContext);
     expect(logout.status).toBe(200);
     expect(cookies.jar.has(PRIVATE_SESSION_COOKIE)).toBe(false);
   });
@@ -285,7 +287,7 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer anything' },
       }),
       cookies: createCookies(),
-    } as any);
+    } as unknown as APIContext);
 
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ ok: false, error: 'private-view-disabled' });
@@ -301,7 +303,7 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer ignored' },
       }),
       cookies: createCookies(),
-    } as any);
+    } as unknown as APIContext);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
@@ -318,7 +320,7 @@ describe('api routes', () => {
         body: JSON.stringify({ token: 12345 }),
       }),
       cookies: createCookies(),
-    } as any);
+    } as unknown as APIContext);
 
     expect(response.status).toBe(401);
   });
@@ -328,9 +330,9 @@ describe('api routes', () => {
     delete process.env.CLAWSPRAWL_PRIVATE_TOKEN;
 
     const cookies = createCookies();
-    expect((await getPrivateDashboard({ cookies } as any)).status).toBe(200);
-    expect((await getPrivateHealth({ cookies } as any)).status).toBe(200);
-    expect((await getPrivateEvents({ cookies } as any)).status).toBe(200);
+    expect((await getPrivateDashboard({ cookies } as unknown as APIContext)).status).toBe(200);
+    expect((await getPrivateHealth({ cookies } as unknown as APIContext)).status).toBe(200);
+    expect((await getPrivateEvents({ cookies } as unknown as APIContext)).status).toBe(200);
   });
 
   it('returns public and private SSE streams with expected event shapes', async () => {
@@ -339,7 +341,7 @@ describe('api routes', () => {
       return 1 as unknown as ReturnType<typeof setInterval>;
     });
 
-    const publicResponse = await getPublicEvents({} as any);
+    const publicResponse = await getPublicEvents({} as unknown as APIContext);
     expect(publicResponse.status).toBe(200);
     const publicReader = publicResponse.body?.getReader();
     const publicChunk = await publicReader?.read();
@@ -355,8 +357,8 @@ describe('api routes', () => {
         headers: { authorization: 'Bearer private-token' },
       }),
       cookies,
-    } as any);
-    const privateResponse = await getPrivateEvents({ cookies } as any);
+    } as unknown as APIContext);
+    const privateResponse = await getPrivateEvents({ cookies } as unknown as APIContext);
     expect(privateResponse.status).toBe(200);
     const privateReader = privateResponse.body?.getReader();
     const privateChunk = await privateReader?.read();

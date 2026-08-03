@@ -120,7 +120,7 @@ describe('dashboard renderers', () => {
       agents: [{ id: 'GIBSON', model: 'ollama/x' }],
     };
 
-    const html = renderAgentRows(state as any, new Map([['GIBSON', 3]]));
+    const html = renderAgentRows(state as unknown as DashboardState, new Map([['GIBSON', 3]]));
     expect(html).toContain('GIBSON');
     expect(html).toContain('sessions:3');
     expect(html).toContain('ollama/x');
@@ -133,7 +133,7 @@ describe('dashboard renderers', () => {
       agents: [{ id: 'ceo', model: { primary: 'ollama-cloud/qwen3.5:cloud', fallbacks: [] } }],
     };
 
-    const html = renderAgentRows(state as any, new Map([['ceo', 5]]));
+    const html = renderAgentRows(state as unknown as DashboardState, new Map([['ceo', 5]]));
     expect(html).toContain('ceo');
     expect(html).toContain('ollama-cloud/qwen3.5:cloud');
     expect(html).toContain('sessions:5');
@@ -146,10 +146,10 @@ describe('dashboard renderers', () => {
     const eventState = { ...baseState, events: [{ type: 'event' as const, event: 'heartbeat', payload: { ts: 1712000000000 } }] };
 
     const sharedClass = 'rounded border border-terminal-border bg-terminal-surface-2 px-3 py-2';
-    expect(renderAgentRows(agentState as any, new Map())).toContain(sharedClass);
-    expect(renderCronRows(cronState as any)).toContain(sharedClass);
-    expect(renderProviderRows(providerState as any)).toContain(sharedClass);
-    expect(renderEventRows(eventState as any, new Set(['heartbeat']))).toContain(sharedClass);
+    expect(renderAgentRows(agentState as unknown as DashboardState, new Map())).toContain(sharedClass);
+    expect(renderCronRows(cronState as unknown as DashboardState)).toContain(sharedClass);
+    expect(renderProviderRows(providerState as unknown as DashboardState)).toContain(sharedClass);
+    expect(renderEventRows(eventState as unknown as DashboardState, new Set(['heartbeat']))).toContain(sharedClass);
   });
 
   it('renders cron rows with error details when present', () => {
@@ -159,7 +159,7 @@ describe('dashboard renderers', () => {
       cronRuns: [{ jobId: 'daily', status: 'error', error: 'Unknown Channel', ts: 1 }],
     };
 
-    const html = renderCronRows(state as any);
+    const html = renderCronRows(state as unknown as DashboardState);
     expect(html).toContain('daily');
     expect(html).toContain('Unknown Channel');
     expect(html).toContain('status-error');
@@ -171,7 +171,7 @@ describe('dashboard renderers', () => {
       cronJobs: [{ name: 'nightly', id: 'nightly', schedule: '0 0 * * *', enabled: true }],
     };
 
-    const html = renderCronRows(state as any);
+    const html = renderCronRows(state as unknown as DashboardState);
     expect(html).toContain('nightly');
     expect(html).toContain('0 0 * * *');
   });
@@ -182,7 +182,7 @@ describe('dashboard renderers', () => {
       models: [{ id: 'ollama-cloud/x', provider: 'ollama-cloud' }],
     };
 
-    const html = renderProviderRows(state as any);
+    const html = renderProviderRows(state as unknown as DashboardState);
     expect(html).toContain('ollama-cloud');
     expect(html).toContain('healthy');
     // No phantom degraded entries for absent providers
@@ -193,22 +193,22 @@ describe('dashboard renderers', () => {
   // --- Empty state fallback tests ---
 
   it('renders empty-state message when agents list is empty', () => {
-    const html = renderAgentRows(baseState as any, new Map());
+    const html = renderAgentRows(baseState as unknown as DashboardState, new Map());
     expect(html).toContain('No agents loaded.');
   });
 
   it('renders empty-state message when cron jobs list is empty', () => {
-    const html = renderCronRows(baseState as any);
+    const html = renderCronRows(baseState as unknown as DashboardState);
     expect(html).toContain('No cron data loaded.');
   });
 
   it('renders empty-state message when provider models list is empty', () => {
-    const html = renderProviderRows(baseState as any);
+    const html = renderProviderRows(baseState as unknown as DashboardState);
     expect(html).toContain('No model provider data loaded.');
   });
 
   it('renders empty-state message when events list is empty', () => {
-    const html = renderEventRows(baseState as any, new Set(['heartbeat', 'cron', 'other']));
+    const html = renderEventRows(baseState as unknown as DashboardState, new Set(['heartbeat', 'cron', 'other']));
     expect(html).toContain('No live events yet.');
   });
 
@@ -399,7 +399,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderSessionRows(state as any);
+    const html = renderSessionRows(state as unknown as DashboardState);
     expect(html).toContain('CEO Main');
     expect(html).toContain('ceo');
     expect(html).toContain('persistent');
@@ -418,14 +418,14 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderSessionRows(state as any);
+    const html = renderSessionRows(state as unknown as DashboardState);
     expect(html).toContain('idle');
     expect(html).toContain('closed');
     expect(html).toContain('status-muted');
   });
 
   it('renders empty-state message when sessions list is empty', () => {
-    const html = renderSessionRows(baseState as any);
+    const html = renderSessionRows(baseState as unknown as DashboardState);
     expect(html).toContain('No sessions loaded.');
   });
 
@@ -434,7 +434,7 @@ describe('dashboard renderers', () => {
       key: `s-${i}`, agentId: 'ceo', displayName: `Session ${i}`,
     }));
     const state = { ...baseState, sessions };
-    const html = renderSessionRows(state as any);
+    const html = renderSessionRows(state as unknown as DashboardState);
     expect(html).toContain('Session 0');
     expect(html).toContain('Session 49');
     expect(html).toContain('and 5 more');
@@ -451,7 +451,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderModelRows(state as any);
+    const html = renderModelRows(state as unknown as DashboardState);
     expect(html).toContain('qwen3.5:cloud');
     expect(html).toContain('ollama-cloud');
     expect(html).toContain('ctx:128k');
@@ -462,7 +462,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state message when models list is empty', () => {
-    const html = renderModelRows(baseState as any);
+    const html = renderModelRows(baseState as unknown as DashboardState);
     expect(html).toContain('No models loaded.');
   });
 
@@ -487,7 +487,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderHealthRows(state as any);
+    const html = renderHealthRows(state as unknown as DashboardState);
     expect(html).toContain('Overall');
     expect(html).toContain('healthy');
     expect(html).toContain('450ms');
@@ -504,13 +504,13 @@ describe('dashboard renderers', () => {
       health: { ok: false, ts: 0 },
     };
 
-    const html = renderHealthRows(state as any);
+    const html = renderHealthRows(state as unknown as DashboardState);
     expect(html).toContain('unhealthy');
     expect(html).toContain('status-error');
   });
 
   it('renders empty-state message when health is null', () => {
-    const html = renderHealthRows(baseState as any);
+    const html = renderHealthRows(baseState as unknown as DashboardState);
     expect(html).toContain('No health data loaded.');
   });
 
@@ -532,7 +532,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderStatusRows(state as any);
+    const html = renderStatusRows(state as unknown as DashboardState);
     expect(html).toContain('2026.4.5');
     expect(html).toContain('total:1487');
     expect(html).toContain('active:109');
@@ -547,7 +547,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state message when status is null', () => {
-    const html = renderStatusRows(baseState as any);
+    const html = renderStatusRows(baseState as unknown as DashboardState);
     expect(html).toContain('No status data loaded.');
   });
 
@@ -560,7 +560,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderStatusRows(state as any);
+    const html = renderStatusRows(state as unknown as DashboardState);
     expect(html).toContain('text-terminal-muted');
     expect(html).toContain('fail:0');
   });
@@ -576,7 +576,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderPresenceRows(state as any);
+    const html = renderPresenceRows(state as unknown as DashboardState);
     expect(html).toContain('workstation-a');
     expect(html).toContain('webchat');
     expect(html).toContain('linux');
@@ -588,7 +588,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state message when presence list is empty', () => {
-    const html = renderPresenceRows(baseState as any);
+    const html = renderPresenceRows(baseState as unknown as DashboardState);
     expect(html).toContain('No connected clients.');
   });
 
@@ -598,7 +598,7 @@ describe('dashboard renderers', () => {
       presence: [{ ts: 0 }],
     };
 
-    const html = renderPresenceRows(state as any);
+    const html = renderPresenceRows(state as unknown as DashboardState);
     expect(html).toContain('unknown');
   });
 
@@ -618,7 +618,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderUsageCostRows(state as any);
+    const html = renderUsageCostRows(state as unknown as DashboardState);
     expect(html).toContain('Total');
     expect(html).toContain('in:30.3M');
     expect(html).toContain('out:132.4k');
@@ -638,14 +638,14 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderUsageCostRows(state as any);
+    const html = renderUsageCostRows(state as unknown as DashboardState);
     expect(html).toContain('openai');
     expect(html).toContain('used:1.2k');
     expect(html).toContain('remaining:8.8k');
   });
 
   it('renders empty-state when usage cost is null', () => {
-    const html = renderUsageCostRows(baseState as any);
+    const html = renderUsageCostRows(baseState as unknown as DashboardState);
     expect(html).toContain('No usage data loaded.');
   });
 
@@ -660,7 +660,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderUsageCostRows(state as any);
+    const html = renderUsageCostRows(state as unknown as DashboardState);
     expect(html).toContain('cost:$5.42');
   });
 
@@ -686,7 +686,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderToolCatalogRows(state as any);
+    const html = renderToolCatalogRows(state as unknown as DashboardState);
     expect(html).toContain('Files');
     expect(html).toContain('2 tools');
     expect(html).toContain('core');
@@ -695,7 +695,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when tool catalog is null', () => {
-    const html = renderToolCatalogRows(baseState as any);
+    const html = renderToolCatalogRows(baseState as unknown as DashboardState);
     expect(html).toContain('No tool catalog loaded.');
   });
 
@@ -715,7 +715,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderSkillsRows(state as any);
+    const html = renderSkillsRows(state as unknown as DashboardState);
     expect(html).toContain('Skills');
     expect(html).toContain('2/3 eligible');
     expect(html).toContain('🔧');
@@ -728,7 +728,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when skills status is null', () => {
-    const html = renderSkillsRows(baseState as any);
+    const html = renderSkillsRows(baseState as unknown as DashboardState);
     expect(html).toContain('No skills data loaded.');
   });
 
@@ -763,7 +763,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderChannelsStatusRows(state as any);
+    const html = renderChannelsStatusRows(state as unknown as DashboardState);
     expect(html).toContain('Discord');
     expect(html).toContain('connected');
     expect(html).toContain('bot:ClawBot');
@@ -797,7 +797,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderChannelsStatusRows(state as any);
+    const html = renderChannelsStatusRows(state as unknown as DashboardState);
     expect(html).toContain('Slack');
     expect(html).toContain('disconnected');
     expect(html).toContain('retries:3');
@@ -805,7 +805,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when channels status is null', () => {
-    const html = renderChannelsStatusRows(baseState as any);
+    const html = renderChannelsStatusRows(baseState as unknown as DashboardState);
     expect(html).toContain('No channel status loaded.');
   });
 
@@ -817,7 +817,7 @@ describe('dashboard renderers', () => {
       cronScheduler: { enabled: true, jobs: 7, nextWakeAtMs: Date.now() + 60000 },
     };
 
-    const html = renderCronSchedulerRows(state as any);
+    const html = renderCronSchedulerRows(state as unknown as DashboardState);
     expect(html).toContain('Scheduler');
     expect(html).toContain('enabled');
     expect(html).toContain('7 jobs');
@@ -829,13 +829,13 @@ describe('dashboard renderers', () => {
       cronScheduler: { enabled: false, jobs: 0, nextWakeAtMs: null },
     };
 
-    const html = renderCronSchedulerRows(state as any);
+    const html = renderCronSchedulerRows(state as unknown as DashboardState);
     expect(html).toContain('disabled');
     expect(html).toContain('no next wake');
   });
 
   it('renders empty-state when cron scheduler is null', () => {
-    const html = renderCronSchedulerRows(baseState as any);
+    const html = renderCronSchedulerRows(baseState as unknown as DashboardState);
     expect(html).toContain('No scheduler status loaded.');
   });
 
@@ -863,7 +863,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderMemoryStatusRows(state as any);
+    const html = renderMemoryStatusRows(state as unknown as DashboardState);
     expect(html).toContain('Embedding');
     expect(html).toContain('agent:ceo');
     expect(html).toContain('provider:ollama-cloud');
@@ -895,13 +895,13 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderMemoryStatusRows(state as any);
+    const html = renderMemoryStatusRows(state as unknown as DashboardState);
     expect(html).toContain('status-error');
     expect(html).toContain('fail');
   });
 
   it('renders empty-state when memory status is null', () => {
-    const html = renderMemoryStatusRows(baseState as any);
+    const html = renderMemoryStatusRows(baseState as unknown as DashboardState);
     expect(html).toContain('No memory status loaded.');
   });
 
@@ -913,7 +913,7 @@ describe('dashboard renderers', () => {
       configData: { port: 18789, debug: false, agents: ['ceo', 'ops'] },
     };
 
-    const html = renderConfigRows(state as any);
+    const html = renderConfigRows(state as unknown as DashboardState);
     expect(html).toContain('port');
     expect(html).toContain('18789');
     expect(html).toContain('debug');
@@ -922,13 +922,13 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when config data is null', () => {
-    const html = renderConfigRows(baseState as any);
+    const html = renderConfigRows(baseState as unknown as DashboardState);
     expect(html).toContain('No config data loaded.');
   });
 
   it('renders empty-state when config is empty object', () => {
     const state = { ...baseState, configData: {} };
-    const html = renderConfigRows(state as any);
+    const html = renderConfigRows(state as unknown as DashboardState);
     expect(html).toContain('Config is empty.');
   });
 
@@ -942,7 +942,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderPermissionActivityRows(state as any);
+    const html = renderPermissionActivityRows(state as unknown as DashboardState);
     expect(html).toContain('requested');
     expect(html).toContain('write_file');
     expect(html).toContain('overwrite');
@@ -958,7 +958,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderPermissionActivityRows(state as any);
+    const html = renderPermissionActivityRows(state as unknown as DashboardState);
     expect(html).toContain('granted');
     expect(html).toContain('denied');
     expect(html).toContain('exec_cmd');
@@ -968,7 +968,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when no permission events exist', () => {
-    const html = renderPermissionActivityRows(baseState as any);
+    const html = renderPermissionActivityRows(baseState as unknown as DashboardState);
     expect(html).toContain('No permission events yet.');
   });
 
@@ -982,7 +982,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderPermissionActivityRows(state as any);
+    const html = renderPermissionActivityRows(state as unknown as DashboardState);
     expect(html).toContain('bash');
     expect(html).not.toContain('heartbeat');
     expect(html).not.toContain('read');
@@ -998,7 +998,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderToolExecutionRows(state as any);
+    const html = renderToolExecutionRows(state as unknown as DashboardState);
     expect(html).toContain('running');
     expect(html).toContain('read_file');
     expect(html).toContain('status-warn');
@@ -1012,7 +1012,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderToolExecutionRows(state as any);
+    const html = renderToolExecutionRows(state as unknown as DashboardState);
     expect(html).toContain('ok');
     expect(html).toContain('write_file');
     expect(html).toContain('42ms');
@@ -1027,7 +1027,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderToolExecutionRows(state as any);
+    const html = renderToolExecutionRows(state as unknown as DashboardState);
     expect(html).toContain('fail');
     expect(html).toContain('exec_cmd');
     expect(html).toContain('5000ms');
@@ -1037,7 +1037,7 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when no tool execution events exist', () => {
-    const html = renderToolExecutionRows(baseState as any);
+    const html = renderToolExecutionRows(baseState as unknown as DashboardState);
     expect(html).toContain('No tool executions yet.');
   });
 
@@ -1051,7 +1051,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderToolExecutionRows(state as any);
+    const html = renderToolExecutionRows(state as unknown as DashboardState);
     expect(html).toContain('grep');
     expect(html).not.toContain('bash');
     expect(html).not.toContain('/foo');
@@ -1069,7 +1069,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderFileTrackingRows(state as any);
+    const html = renderFileTrackingRows(state as unknown as DashboardState);
     expect(html).toContain('Modified files');
     expect(html).toContain('3 files');
     expect(html).toContain('src/index.ts');
@@ -1090,7 +1090,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderFileTrackingRows(state as any);
+    const html = renderFileTrackingRows(state as unknown as DashboardState);
     expect(html).toContain('Recent file events');
     expect(html).toContain('2 events');
     expect(html).toContain('src/main.ts');
@@ -1110,14 +1110,14 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderFileTrackingRows(state as any);
+    const html = renderFileTrackingRows(state as unknown as DashboardState);
     expect(html).toContain('Modified files');
     expect(html).toContain('Recent file events');
     expect(html).toContain('src/lib/store.ts');
   });
 
   it('renders empty-state when no file data exists', () => {
-    const html = renderFileTrackingRows(baseState as any);
+    const html = renderFileTrackingRows(baseState as unknown as DashboardState);
     expect(html).toContain('No file changes tracked yet.');
   });
 
@@ -1131,7 +1131,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderFileTrackingRows(state as any);
+    const html = renderFileTrackingRows(state as unknown as DashboardState);
     expect(html).toContain('test.ts');
     expect(html).not.toContain('heartbeat');
     expect(html).not.toContain('bash');
@@ -1148,7 +1148,7 @@ describe('dashboard renderers', () => {
       ],
     };
 
-    const html = renderSessionDetailRows(state as any);
+    const html = renderSessionDetailRows(state as unknown as DashboardState);
     expect(html).toContain('CEO Main');
     expect(html).toContain('ceo');
     expect(html).toContain('running');
@@ -1162,13 +1162,13 @@ describe('dashboard renderers', () => {
   });
 
   it('renders empty-state when session details is null', () => {
-    const html = renderSessionDetailRows(baseState as any);
+    const html = renderSessionDetailRows(baseState as unknown as DashboardState);
     expect(html).toContain('No session detail data loaded.');
   });
 
   it('renders empty-state when session details is empty array', () => {
     const state = { ...baseState, sessionDetails: [] };
-    const html = renderSessionDetailRows(state as any);
+    const html = renderSessionDetailRows(state as unknown as DashboardState);
     expect(html).toContain('No active sessions.');
   });
 
@@ -1177,7 +1177,7 @@ describe('dashboard renderers', () => {
       key: `s-${i}`, agentId: 'ceo', status: 'running', displayName: `Session ${i}`,
     }));
     const state = { ...baseState, sessionDetails: sessions };
-    const html = renderSessionDetailRows(state as any);
+    const html = renderSessionDetailRows(state as unknown as DashboardState);
     expect(html).toContain('Session 0');
     expect(html).toContain('and');
     expect(html).toContain('more');
@@ -1197,7 +1197,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderChannelsStatusRows(state as any);
+    const html = renderChannelsStatusRows(state as unknown as DashboardState);
     expect(html).toContain('Telegram');
     expect(html).toContain('running');
     expect(html).toContain('no accounts');
@@ -1215,7 +1215,7 @@ describe('dashboard renderers', () => {
       },
     };
 
-    const html = renderChannelsStatusRows(state as any);
+    const html = renderChannelsStatusRows(state as unknown as DashboardState);
     expect(html).toContain('IRC');
     expect(html).toContain('stopped');
     expect(html).toContain('no accounts');
@@ -1230,7 +1230,7 @@ describe('dashboard renderers', () => {
     }));
     const state = { ...baseState, fileStatus: files };
 
-    const html = renderFileTrackingRows(state as any);
+    const html = renderFileTrackingRows(state as unknown as DashboardState);
     expect(html).toContain('25 files');
     expect(html).toContain('src/file-0.ts');
     expect(html).toContain('src/file-19.ts');
