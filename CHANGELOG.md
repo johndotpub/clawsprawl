@@ -23,6 +23,15 @@ _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sw
 - Enrich rejected RPC errors with structured `code` + `details` so OpenClaw's structured `MISSING_SCOPE` ({ code:'FORBIDDEN', details:{ code:'MISSING_SCOPE', missingScope, requiredScopes } }) is surfaced to callers.
 - Add Activity-Feed buckets for OpenClaw v4 events: `config.changed`, `skills.changed`, `node.presence` broadcast + `node.presence.activity`, `session.approval`, `session.observer`, and connection-scoped `terminal.*`.
 
+### Added — OpenClaw 2026.7.2-beta device pairing
+- OpenClaw 2026.7.2-beta.6+ enforces device identity for the `openclaw-control-ui` operator client and grants no operator scopes to the reserved loopback `backend` path, so a shared token alone no longer reads gateway data. The dashboard now defaults to the `openclaw-control-ui`/`webchat` operator identity and supports paired-device auth end-to-end.
+- Auto-derive `device.id` from the Ed25519 public key (SHA-256 of the raw 32-byte key, hex) when `CLAWSPRAWL_DEVICE_ID` is not supplied, matching the gateway's device-identity check (`DEVICE_AUTH_DEVICE_ID_MISMATCH`).
+- Fix a v3 device-auth signature mismatch: `signChallenge` used `platform: 'server'` (Node) while `buildConnectParams` sent `client.platform: 'unknown'`; both now share `resolveClientPlatform()` so the gateway's payload reconstruction matches.
+- Add `scripts/setup-device-identity.mjs` (`npm run setup:device`) to generate an Ed25519 device keypair + derived id and print the env vars + approval instructions.
+- Surface an actionable bootstrap hint when the gateway requires a paired device (CONTROL_UI_DEVICE_IDENTITY_REQUIRED) or returns MISSING_SCOPE without a configured device.
+- Fix `docs:screenshots`: it set `CLAWSPRAWL_MODE=token` (which the spec skips — it only captures in `public`/`insecure`) and hardcoded the scope-less `backend` identity. It now runs both `public` and `insecure` passes and inherits the device-paired client identity from the environment.
+- Refresh the four docs screenshots against a live OpenClaw 2026.7.2-beta.7 gateway (5 agents, 14 models).
+
 ### Changed — Docs
 - Update README Astro badge (6.x → 7.x), architecture-overview protocol label (v3 → v4), the OpenClaw capability audit (newly-stable + removed/renamed methods, protocol v5 tracking), and the heredoc API/sourcecode method list.
 

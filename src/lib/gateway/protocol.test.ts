@@ -393,6 +393,24 @@ describe('gateway protocol helpers', () => {
       expect(params.device).toBeUndefined();
     });
 
+    it('derives device.id from the public key when deviceId is not supplied', () => {
+      const params = buildConnectParams({
+        url: TEST_URL,
+        devicePublicKey: testKeys.publicKey,
+        devicePrivateKey: testKeys.privateKey,
+      }, 'nonce-derive');
+      expect(params.device?.id).toBe(testKeys.deviceId);
+    });
+
+    it('prefers an explicit deviceId over the derived one', () => {
+      const params = buildConnectParams({
+        url: TEST_URL,
+        deviceId: 'explicit-id',
+        devicePublicKey: testKeys.publicKey,
+      });
+      expect(params.device?.id).toBe('explicit-id');
+    });
+
     it('includes nonce in device block when challengeNonce is provided', () => {
       const params = buildConnectParams({
         url: TEST_URL,

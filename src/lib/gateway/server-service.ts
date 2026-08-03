@@ -189,8 +189,8 @@ export class GatewayServerService {
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'gateway-client',
-      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'backend',
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'openclaw-control-ui',
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'webchat',
       clientVersion: CLIENT_VERSION,
       clientDisplayName: 'ClawSprawl Dashboard (SSR)',
       role: 'operator',
@@ -299,6 +299,21 @@ export class GatewayServerService {
 
       this.initialized = true;
     } catch (err) {
+      // Surface an actionable hint when the gateway requires device pairing
+      // (OpenClaw 2026.7.2-beta.6+ enforces device identity for the control-ui
+      // operator client and grants no operator scopes to the reserved loopback
+      // `backend` path). Without a paired device the dashboard connects but every
+      // data RPC returns MISSING_SCOPE, so the dashboard renders empty.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
+          (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined && /MISSING_SCOPE.*operator\.read/i.test(msg))) {
+        console.warn(
+          '[clawsprawl:server] gateway requires a paired operator device for operator.read. ' +
+          'Generate a device identity with `npm run setup:device` and set ' +
+          'CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the ' +
+          'pending pairing on the gateway with `openclaw devices approve <id>`).',
+        );
+      }
       console.warn('[clawsprawl:server] gateway bootstrap failed:', err);
       this.cache.connectionState = 'error';
       this.initialized = false;
