@@ -437,8 +437,9 @@ export interface GatewayClientOptions {
    * Client capabilities advertised in the `connect` handshake (`connect.params.caps`).
    * Advertise only capabilities the dashboard implements — capability-gated agent
    * tools are omitted by the gateway unless the originating client advertises every
-   * requirement. Defaults to `['agent-kind']` (typed `agents.list` roster: system vs
-   * agent rows). See OpenClaw gateway `connect.params.caps` registry.
+   * requirement. The server service advertises `['agent-kind']` by default (typed
+   * `agents.list` roster: system vs agent rows); `buildConnectParams` omits `caps`
+   * entirely when this is unset. See OpenClaw gateway `connect.params.caps` registry.
    */
   caps?: string[];
   /**

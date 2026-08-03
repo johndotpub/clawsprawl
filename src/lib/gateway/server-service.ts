@@ -45,8 +45,10 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
  *
  * OpenClaw `main` tracks protocol v5 (unreleased); the dashboard ships v4 by
  * default. When a v5 release ships, set `OPENCLAW_GATEWAY_MAX_PROTOCOL=5` to
- * negotiate v5 without a code change. Must be >= `MIN_PROTOCOL_VERSION` (3);
- * invalid values fall back to the compiled `PROTOCOL_VERSION`.
+ * negotiate v5 without a code change. Returns the integer for values >=
+ * `MIN_PROTOCOL_VERSION` (3); returns `undefined` for non-numeric/empty/out-of-
+ * range input, in which case the caller falls back to the compiled
+ * `PROTOCOL_VERSION` via `options.maxProtocol ?? PROTOCOL_VERSION`.
  */
 export function parseMaxProtocol(value: string | undefined): number | undefined {
   if (!value) return undefined;

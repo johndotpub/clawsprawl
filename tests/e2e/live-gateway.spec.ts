@@ -59,8 +59,8 @@ test.describe('live gateway integration', () => {
     await page.goto('/');
     const pingReceived = await page.evaluate(async () => {
       return new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => { es.close(); resolve(false); }, 45_000);
         const es = new EventSource('/api/public/events');
+        const timeout = setTimeout(() => { es.close(); resolve(false); }, 45_000);
         es.addEventListener('ping', () => {
           clearTimeout(timeout);
           es.close();
