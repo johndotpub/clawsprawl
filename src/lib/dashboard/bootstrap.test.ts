@@ -169,6 +169,7 @@ describe('initGatewayDashboard', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('hydrates the public dashboard and unlocks private view through the token form', async () => {

@@ -433,6 +433,22 @@ export interface GatewayClientOptions {
   devicePrivateKey?: string;
   /** Device token for reconnecting a previously-paired device. */
   deviceToken?: string;
+  /**
+   * Client capabilities advertised in the `connect` handshake (`connect.params.caps`).
+   * Advertise only capabilities the dashboard implements — capability-gated agent
+   * tools are omitted by the gateway unless the originating client advertises every
+   * requirement. The server service advertises `['agent-kind']` by default (typed
+   * `agents.list` roster: system vs agent rows); `buildConnectParams` omits `caps`
+   * entirely when this is unset. See OpenClaw gateway `connect.params.caps` registry.
+   */
+  caps?: string[];
+  /**
+   * Highest protocol version this client will negotiate (`maxProtocol`).
+   * Defaults to {@link PROTOCOL_VERSION} (4). OpenClaw `main` tracks protocol v5
+   * (unreleased); when a v5 release ships, raise this (and `MIN_PROTOCOL_VERSION`)
+   * via the `OPENCLAW_GATEWAY_MAX_PROTOCOL` env to negotiate v5 without a code change.
+   */
+  maxProtocol?: number;
 }
 
 // --- Extended data summaries (from additional gateway RPCs) ---

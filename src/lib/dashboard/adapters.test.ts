@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { CronRunEntry } from '../gateway/types';
 import {
   asNumber,
   asString,
@@ -246,7 +247,7 @@ describe('dashboard adapters', () => {
   it('falls back to jobName for legacy compatibility', () => {
     const runMap = latestCronRunsByJob([
       { jobName: 'legacy-job', status: 'ok', ts: 1 },
-    ] as any[]);
+    ] as unknown as CronRunEntry[]);
     expect(runMap.get('legacy-job')?.status).toBe('ok');
   });
 
@@ -264,7 +265,7 @@ describe('dashboard adapters', () => {
       jobId: 'j1',
       ts: 1,
       error: { code: 'UNKNOWN' },
-    } as any);
+    } as unknown as CronRunEntry);
     expect(error).toBe('');
   });
 

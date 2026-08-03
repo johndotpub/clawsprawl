@@ -2,7 +2,17 @@ import { expect, test } from '@playwright/test';
 
 test.skip(!process.env.E2E_COVERAGE, 'Run only in e2e coverage mode.');
 
-function isAppEntry(entry: any): boolean {
+interface CoverageFunction {
+  ranges?: Array<{ count: number; startOffset: number; endOffset: number }>;
+}
+
+interface CoverageEntry {
+  url?: string;
+  ranges?: Array<{ start: number; end: number }>;
+  functions?: Array<CoverageFunction>;
+}
+
+function isAppEntry(entry: CoverageEntry): boolean {
   const url = String(entry?.url ?? '');
   if (!url) return true;
   if (url.includes('/src/')) return true;
@@ -11,7 +21,7 @@ function isAppEntry(entry: any): boolean {
   return false;
 }
 
-function usedBytes(entry: any): number {
+function usedBytes(entry: CoverageEntry): number {
   const mergeRanges = (ranges: Array<{ start: number; end: number }>): number => {
     if (ranges.length === 0) {
       return 0;
@@ -36,7 +46,7 @@ function usedBytes(entry: any): number {
     return mergeRanges(entry.ranges.map((range: { start: number; end: number }) => ({ start: range.start, end: range.end })));
   }
   if (Array.isArray(entry?.functions)) {
-    const ranges = entry.functions.flatMap((fn: any) => {
+    const ranges = entry.functions.flatMap((fn: CoverageFunction) => {
       if (!Array.isArray(fn?.ranges)) {
         return [];
       }

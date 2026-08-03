@@ -40,6 +40,23 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
   return scopes.length > 0 ? scopes : undefined;
 }
 
+/**
+ * Parse the negotiated max protocol version from env.
+ *
+ * OpenClaw `main` tracks protocol v5 (unreleased); the dashboard ships v4 by
+ * default. When a v5 release ships, set `OPENCLAW_GATEWAY_MAX_PROTOCOL=5` to
+ * negotiate v5 without a code change. Returns the integer for values >=
+ * `MIN_PROTOCOL_VERSION` (3); returns `undefined` for non-numeric/empty/out-of-
+ * range input, in which case the caller falls back to the compiled
+ * `PROTOCOL_VERSION` via `options.maxProtocol ?? PROTOCOL_VERSION`.
+ */
+export function parseMaxProtocol(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 3) return undefined;
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -186,6 +203,12 @@ export class GatewayServerService {
       devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
       devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
       deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
+      // Advertise only capabilities the dashboard implements. `agent-kind` opts
+      // into the typed `agents.list` roster (system vs agent rows).
+      caps: ['agent-kind'],
+      // Forward-compat: allow negotiating a newer wire protocol via env when a
+      // future OpenClaw release bumps protocol v5, without a code change.
+      maxProtocol: parseMaxProtocol(process.env.OPENCLAW_GATEWAY_MAX_PROTOCOL),
     });
 
     this.client.onStateChange((state) => {
@@ -278,6 +301,21 @@ export class GatewayServerService {
 
       this.initialized = true;
     } catch (err) {
+      // Surface an actionable hint when the gateway requires device pairing
+      // (OpenClaw 2026.7.2-beta.6+ enforces device identity for the control-ui
+      // operator client and grants no operator scopes to the reserved loopback
+      // `backend` path). Without a paired device the dashboard connects but every
+      // data RPC returns MISSING_SCOPE, so the dashboard renders empty.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
+          (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined && /MISSING_SCOPE.*operator\.read/i.test(msg))) {
+        console.warn(
+          '[clawsprawl:server] gateway requires a paired operator device for operator.read. ' +
+          'Generate a device identity with `npm run setup:device` and set ' +
+          'CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the ' +
+          'pending pairing on the gateway with `openclaw devices approve <id>`).',
+        );
+      }
       console.warn('[clawsprawl:server] gateway bootstrap failed:', err);
       this.cache.connectionState = 'error';
       this.initialized = false;

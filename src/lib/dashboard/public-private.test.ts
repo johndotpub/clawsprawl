@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPrivateEvent, buildPublicEvent, buildPublicSnapshot } from './public-private';
+import type { DashboardSnapshot } from '../gateway/server-service';
+import type { EventFrame } from '../gateway/types';
 
 const snapshot = {
   connectionState: 'connected',
@@ -84,7 +86,7 @@ const snapshot = {
 
 describe('public/private dashboard shaping', () => {
   it('removes private top-level fields from the public snapshot', () => {
-    const publicSnapshot = buildPublicSnapshot(snapshot as any);
+    const publicSnapshot = buildPublicSnapshot(snapshot as unknown as DashboardSnapshot);
     expect(publicSnapshot.sessions).toEqual([]);
     expect(publicSnapshot.presence).toEqual([]);
     expect(publicSnapshot.configData).toBeNull();
@@ -115,8 +117,8 @@ describe('public/private dashboard shaping', () => {
   });
 
   it('never exposes raw gateway events publicly', () => {
-    expect(buildPublicEvent({ type: 'event', event: 'session.tool', payload: { tool: 'bash' } } as any)).toBeNull();
-    expect(buildPrivateEvent({ type: 'event', event: 'session.tool', payload: { tool: 'bash' } } as any)).toMatchObject({ event: 'session.tool' });
+    expect(buildPublicEvent({ type: 'event', event: 'session.tool', payload: { tool: 'bash' } } as unknown as EventFrame)).toBeNull();
+    expect(buildPrivateEvent({ type: 'event', event: 'session.tool', payload: { tool: 'bash' } } as unknown as EventFrame)).toMatchObject({ event: 'session.tool' });
   });
 
   it('preserves public-safe status session and heartbeat summaries', () => {
@@ -137,7 +139,7 @@ describe('public/private dashboard shaping', () => {
       },
     };
 
-    const publicSnapshot = buildPublicSnapshot(enriched as any);
+    const publicSnapshot = buildPublicSnapshot(enriched as unknown as DashboardSnapshot);
     expect(publicSnapshot.agents).toEqual([{ id: 'ceo', name: 'Chief', model: 'openai/gpt-5' }]);
     expect(publicSnapshot.status?.sessions).toEqual({
       count: 2,
@@ -160,7 +162,7 @@ describe('public/private dashboard shaping', () => {
       cronScheduler: null,
     };
 
-    const publicSnapshot = buildPublicSnapshot(minimal as any);
+    const publicSnapshot = buildPublicSnapshot(minimal as unknown as DashboardSnapshot);
     expect(publicSnapshot.health).toBeNull();
     expect(publicSnapshot.status).toBeNull();
     expect(publicSnapshot.channelsStatus).toBeNull();
@@ -191,7 +193,7 @@ describe('public/private dashboard shaping', () => {
       },
     };
 
-    const publicSnapshot = buildPublicSnapshot(malformed as any);
+    const publicSnapshot = buildPublicSnapshot(malformed as unknown as DashboardSnapshot);
     expect(publicSnapshot.health?.channelOrder).toEqual(['slack']);
     expect(publicSnapshot.health?.channels?.slack).toEqual({ running: false, probeOk: false });
     expect(publicSnapshot.status?.sessions).toEqual({ count: 3, byAgent: [] });

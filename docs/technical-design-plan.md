@@ -179,35 +179,50 @@ npm run docs:screenshots
 
 ### Available Upstream Methods Worth Evaluating
 
-- `sessions.usage`
-- `sessions.usage.timeseries`
-- `sessions.usage.logs`
-- `gateway.identity.get`
-- `system-presence`
-- `last-heartbeat`
-- `logs.tail`
+The following are now **stable/callable** on OpenClaw v2026.6.11 / v2026.7.1 (operator.read unless noted). The v4 protocol surface is cumulative; `hello-ok.features.methods` is a *conservative* discovery list — several real methods (e.g. `sessions.usage`) are intentionally excluded, so absence from discovery does not imply non-existence.
+
+- `sessions.usage` / `sessions.usage.timeseries` / `sessions.usage.logs`
 - `commands.list`
 - `tools.effective`
-- `tts.status`
-- `tts.providers`
+- `tts.status` / `tts.providers` (and `tts.speak` — operator.write, new in 2026.7.1)
+- `last-heartbeat`
+- `diagnostics.stability` (recommended WS live-feed RPC; complements the OTel export pipeline)
+- `tasks.list` / `tasks.get` (`tasks.cancel` — operator.write)
+- `audit.activity.list`
+- `agents.workspace.list` / `agents.workspace.get`
+- `artifacts.list` / `artifacts.get` / `artifacts.download`
+- `gateway.identity.get`
+- `logs.tail`
+
+Removed/renamed upstream (do not call): `node.pair.request` / `node.pair.verify` (removed in 2026.7 — pending requests are Gateway-created during node connects; use `node.pair.list/approve/reject/remove` + `node.pair.requested/resolved` events). `sessions.observer.ask` → `sessions.companion.ask`. Legacy device-auth signature `v1` removed (v3 preferred; v2 still accepted).
 
 ### Recommended Classification
 
 - Implemented public-safe summary:
   - `usage.status` collapsed to provider quota/remaining panel rows
-- Likely private-only candidates:
-  - `sessions.usage`
-  - `sessions.usage.timeseries`
-  - `sessions.usage.logs`
+- Implemented protocol robustness (v0.43.1 catch-up):
+  - Advertise `agent-kind` capability for the typed `agents.list` roster
+  - Configurable `maxProtocol` via `OPENCLAW_GATEWAY_MAX_PROTOCOL` (protocol v5 forward-compat)
+  - Structured `MISSING_SCOPE` error enrichment on rejected RPCs
+  - Activity-feed buckets for OpenClaw v4 events (`config.changed`, `skills.changed`, `node.presence*`, `session.approval`, `session.observer`, `terminal.*`)
+- Likely private-only candidates (now stable upstream — panel work pending):
+  - `sessions.usage` / `sessions.usage.timeseries` / `sessions.usage.logs`
   - `commands.list`
   - `tools.effective`
+  - `tts.status` / `tts.providers`
   - `last-heartbeat`
-  - `tts.status`
-  - `tts.providers`
+  - `diagnostics.stability` (recommended live-feed RPC)
+  - `tasks.list` / `tasks.get` (`tasks.cancel` is operator.write)
+  - `audit.activity.list`
 - Defer unless explicitly scheduled:
   - `logs.tail`
   - `gateway.identity.get`
-  - mutable or admin-oriented RPC families
+  - mutable or admin-oriented RPC families (`environments.*`, `sessions.dispatch`, `terminal.*` PTY, `ui.command`)
+
+### Protocol Version Tracking
+
+- OpenClaw v2026.6.11 and v2026.7.1 ship **protocol v4** (clawsprawl's current baseline).
+- Protocol **v5 is on `main` (unreleased)** and will be a hard break for v4-only clients. clawsprawl negotiates `minProtocol: 3, maxProtocol: 4` by default; `OPENCLAW_GATEWAY_MAX_PROTOCOL=5` opts into v5 negotiation without a code change. When v5 ships, raise `MIN_PROTOCOL_VERSION` and coordinate the client + Gateway upgrade together.
 
 ## v0.42.0 Active Roadmap
 
@@ -251,7 +266,10 @@ Status legend: `[ ]` pending, `[~]` in progress, `[x]` complete.
 - [x] Fold `usage.status` into public usage panel summaries
   - Acceptance: dashboard usage card shows quota/remaining provider rows when available
   - Verify: adapter + renderer tests
-- [ ] Evaluate private-only additions (`commands.list`, `tools.effective`, `tts.status`, `tts.providers`, `last-heartbeat`)
+- [x] Catch up protocol robustness to OpenClaw v2026.6/7 (agent-kind cap, configurable maxProtocol for v5, structured MISSING_SCOPE, v4 event buckets)
+  - Acceptance: connect advertises caps; errors surface structured scope info; new events appear in Activity Feed
+  - Verify: protocol/client/renderer tests
+- [ ] Map now-stable private RPCs to private panel surfaces (`diagnostics.stability`, `commands.list`, `tools.effective`, `tts.status`/`providers`, `last-heartbeat`, `tasks.list`, `audit.activity.list`, `sessions.usage*`)
   - Acceptance: approved methods mapped to existing or new private panel surfaces
   - Verify: unit tests + e2e coverage
 

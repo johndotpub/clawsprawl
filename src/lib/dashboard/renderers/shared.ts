@@ -132,16 +132,23 @@ const EVENT_BUCKET_TABLE: ReadonlyArray<readonly [RegExp, string]> = [
   [/^heartbeat$/, 'heartbeat'],
   [/^health$/, 'health'],
   [/^presence$/, 'presence'],
+  [/^node\.presence$/, 'presence'],
   [/^node\.presence\.alive$/, 'presence'],
+  [/^node\.presence\.activity$/, 'presence'],
   [/^shutdown$/, 'shutdown'],
   [/^update\.available$/, 'update'],
   [/^payload\.large$/, 'payload'],
+  // operator.read — config / catalog invalidations
+  [/^config\.changed$/, 'config'],
+  [/^skills\.changed$/, 'config'],
   // operator.read
   [/^cron$/, 'cron'],
   [/^sessions\.changed$/, 'session'],
   [/^session\.message$/, 'message'],
   [/^session\.operation$/, 'session'],
   [/^session\.tool$/, 'tool'],
+  [/^session\.approval$/, 'permission'],
+  [/^session\.observer$/, 'session'],
   [/^agent$/, 'agent'],
   [/^chat$/, 'message'],
   [/^chat\.send_timing$/, 'latency'],
@@ -158,6 +165,8 @@ const EVENT_BUCKET_TABLE: ReadonlyArray<readonly [RegExp, string]> = [
   // other broadcasts
   [/^node\.invoke\.request$/, 'node'],
   [/^talk\.mode$/, 'voice'],
+  // connection-scoped operator terminal stream (operator.admin)
+  [/^terminal\./, 'node'],
   // Fallback prefix matches (must be after specific entries)
   [/^session\./, 'session'],
   // File events (gateway-emitted, not in GATEWAY_EVENTS but historically handled)

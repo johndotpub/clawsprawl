@@ -4,6 +4,40 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.44.0 «Uplink»] - 2026-08-02
+
+_Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and an OpenClaw v2026.6/7 protocol-robustness catch-up._
+
+### Fixed — Dependencies & Security
+- Combine 8 open Dependabot PRs into a single update batch: `astro` ^6.4.8 → ^7.1.3, `@astrojs/node` ^10.1.3 → ^11.0.2, `@fontsource/jetbrains-mono` → ^5.3.0, `@tailwindcss/vite` → ^4.3.3, `@astrojs/check` → ^0.9.10, `@playwright/test` → ^1.62.0, `@types/node` → ^26.1.1, `@typescript-eslint/eslint-plugin`/`parser` → ^8.65.0, `@vitest/coverage-v8` → ^4.1.10, `eslint` → ^10.8.0, chainguard/node image digest, and `actions/setup-node` v6 → v7.
+- Drop the legacy `vite: 7.3.6` override (carried from the Astro 6 era); Astro 7 requires Vite 8, which now resolves to `8.2.0`.
+- Add security `overrides` to clear the full `npm audit` (0 vulnerabilities across prod + dev): `esbuild` 0.28.1, `fast-uri` 3.1.5, `postcss` ^8.5.25, `yaml` ^2.9.0. Update stale `allowScripts.esbuild` 0.27.7 → 0.28.1.
+- Hold `typescript` at ^6.0.3 (not Dependabot's 7.0.2): `@astrojs/check` 0.9.10 peers `^5||^6` and `@typescript-eslint` 8.65.0 peers `<6.1.0`, so TS7 is ecosystem-blocked until toolchain majors land.
+
+### Added — Security Enforcement
+- `scripts/qa/audit-check.mjs`: reusable audit engine (full prod + dev tree, `moderate` level); `tests/security/audit.test.ts` enforces a clean audit on every `npm test`; wired into `qa:strict` and CI (`ci.yml`, `security.yml`) alongside the existing prod-only gate.
+
+### Added — OpenClaw v2026.6/7 Catch-Up
+- Advertise the `agent-kind` client capability in the `connect` handshake to opt into the typed `agents.list` roster (system vs agent rows).
+- Make the negotiated `maxProtocol` configurable via `OPENCLAW_GATEWAY_MAX_PROTOCOL` for forward-compat with the upcoming protocol v5 (defaults to v4).
+- Enrich rejected RPC errors with structured `code` + `details` so OpenClaw's structured `MISSING_SCOPE` ({ code:'FORBIDDEN', details:{ code:'MISSING_SCOPE', missingScope, requiredScopes } }) is surfaced to callers.
+- Add Activity-Feed buckets for OpenClaw v4 events: `config.changed`, `skills.changed`, `node.presence` broadcast + `node.presence.activity`, `session.approval`, `session.observer`, and connection-scoped `terminal.*`.
+
+### Added — OpenClaw 2026.7.2-beta device pairing
+- OpenClaw 2026.7.2-beta.6+ enforces device identity for the `openclaw-control-ui` operator client and grants no operator scopes to the reserved loopback `backend` path, so a shared token alone no longer reads gateway data. The dashboard now defaults to the `openclaw-control-ui`/`webchat` operator identity and supports paired-device auth end-to-end.
+- Auto-derive `device.id` from the Ed25519 public key (SHA-256 of the raw 32-byte key, hex) when `CLAWSPRAWL_DEVICE_ID` is not supplied, matching the gateway's device-identity check (`DEVICE_AUTH_DEVICE_ID_MISMATCH`).
+- Fix a v3 device-auth signature mismatch: `signChallenge` used `platform: 'server'` (Node) while `buildConnectParams` sent `client.platform: 'unknown'`; both now share `resolveClientPlatform()` so the gateway's payload reconstruction matches.
+- Add `scripts/setup-device-identity.mjs` (`npm run setup:device`) to generate an Ed25519 device keypair + derived id and print the env vars + approval instructions.
+- Surface an actionable bootstrap hint when the gateway requires a paired device (CONTROL_UI_DEVICE_IDENTITY_REQUIRED) or returns MISSING_SCOPE without a configured device.
+- Fix `docs:screenshots`: it set `CLAWSPRAWL_MODE=token` (which the spec skips — it only captures in `public`/`insecure`) and hardcoded the scope-less `backend` identity. It now runs both `public` and `insecure` passes and inherits the device-paired client identity from the environment.
+- Refresh the four docs screenshots against a live OpenClaw 2026.7.2-beta.7 gateway (5 agents, 14 models).
+
+### Changed — Docs
+- Update README Astro badge (6.x → 7.x), architecture-overview protocol label (v3 → v4), the OpenClaw capability audit (newly-stable + removed/renamed methods, protocol v5 tracking), and the heredoc API/sourcecode method list.
+
+### Chore
+- Regenerate `package-lock.json` against the combined dependency set.
+
 ## [0.43.0] - 2026-06-27
 
 ### Breaking

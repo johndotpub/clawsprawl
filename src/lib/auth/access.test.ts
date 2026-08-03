@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { AstroCookies } from 'astro';
 import {
   checkAuthRateLimit,
   clearPrivateSessionsForTest,
@@ -43,6 +44,13 @@ describe('access helpers', () => {
     delete process.env.CLAWSPRAWL_SESSION_MAX_AGE_HOURS;
   });
 
+  afterEach(() => {
+    // Restore env so mode/token mutations don't leak into other test files.
+    delete process.env.CLAWSPRAWL_MODE;
+    delete process.env.CLAWSPRAWL_PRIVATE_TOKEN;
+    delete process.env.CLAWSPRAWL_SESSION_MAX_AGE_HOURS;
+  });
+
   it('parses access config with sane defaults', () => {
     expect(getAccessConfig()).toMatchObject({
       mode: 'token',
@@ -66,9 +74,9 @@ describe('access helpers', () => {
 
   it('creates and clears a server-backed private session', () => {
     const cookies = createCookies();
-    expect(hasPrivateViewSession(cookies as any)).toBe(false);
+    expect(hasPrivateViewSession(cookies as unknown as AstroCookies)).toBe(false);
 
-    const session = setPrivateViewSession(cookies as any);
+    const session = setPrivateViewSession(cookies as unknown as AstroCookies);
     expect(session.id).toBeTruthy();
     expect(cookies.jar.get(PRIVATE_SESSION_COOKIE)).toBe(session.id);
     expect(cookies.optionsByName.get(PRIVATE_SESSION_COOKIE)).toMatchObject({
@@ -77,11 +85,11 @@ describe('access helpers', () => {
       path: '/',
       maxAge: expect.any(Number),
     });
-    expect(hasPrivateViewSession(cookies as any)).toBe(true);
-    expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
+    expect(hasPrivateViewSession(cookies as unknown as AstroCookies)).toBe(true);
+    expect(isPrivateRouteAllowed(cookies as unknown as AstroCookies)).toBe(true);
 
-    clearPrivateViewSession(cookies as any);
-    expect(hasPrivateViewSession(cookies as any)).toBe(false);
+    clearPrivateViewSession(cookies as unknown as AstroCookies);
+    expect(hasPrivateViewSession(cookies as unknown as AstroCookies)).toBe(false);
   });
 
   it('clamps session max age to 24 hours', () => {
@@ -99,12 +107,12 @@ describe('access helpers', () => {
     delete process.env.CLAWSPRAWL_PRIVATE_TOKEN;
     const cookies = createCookies();
 
-    expect(getAccessState(cookies as any)).toMatchObject({
+    expect(getAccessState(cookies as unknown as AstroCookies)).toMatchObject({
       mode: 'insecure',
       privateViewEnabled: true,
       insecureModeEnabled: true,
     });
-    expect(isPrivateRouteAllowed(cookies as any)).toBe(true);
+    expect(isPrivateRouteAllowed(cookies as unknown as AstroCookies)).toBe(true);
   });
 
   it('rate limits after 10 failed auth attempts', () => {
@@ -120,10 +128,10 @@ describe('access helpers', () => {
     clearPrivateSessionsForTest();
     for (let i = 0; i < 10_000; i++) {
       const cookies = createCookies();
-      setPrivateViewSession(cookies as any);
+      setPrivateViewSession(cookies as unknown as AstroCookies);
     }
     const overflowCookies = createCookies();
-    expect(() => setPrivateViewSession(overflowCookies as any)).toThrow('Session store full');
+    expect(() => setPrivateViewSession(overflowCookies as unknown as AstroCookies)).toThrow('Session store full');
     clearPrivateSessionsForTest();
   });
 });

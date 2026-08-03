@@ -9,7 +9,7 @@ For deeper implementation and roadmap detail, see [`technical-design-plan.md`](t
 ```mermaid
 flowchart LR
   Browser[Browser UI\nAstro SSR + dashboard runtime] -->|fetch + SSE| Server[ClawSprawl SSR Server\nAstro + Node adapter]
-  Server -->|WebSocket RPC v3| Gateway[OpenClaw Gateway\nws://localhost:18789/ws]
+  Server -->|WebSocket RPC v4| Gateway[OpenClaw Gateway\nws://localhost:18789/ws]
   Server -->|SSE event stream| Gateway2[OpenClaw Gateway\nhttp://localhost:18789/event]
   Gateway --> Models[Model Providers\ncloud + local]
   Gateway --> Cron[Cron + automation jobs]

@@ -6,7 +6,7 @@ import type {
   RequestFrame,
   ResponseFrame,
 } from './types';
-import { createPrivateKey, sign as ed25519Sign } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign as ed25519Sign } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Request ID generation
@@ -101,6 +101,33 @@ function normalizeDeviceMetadataForAuth(value: unknown): string {
 }
 
 /**
+ * Resolve the client platform for the connect handshake. Must be used by BOTH
+ * {@link buildConnectParams} (client.platform) and {@link signChallenge} (v3
+ * payload platform) so the gateway's signature reconstruction matches exactly.
+ * In a Node SSR context this is 'server'; in a browser it reflects navigator.platform.
+ */
+function resolveClientPlatform(): string {
+  return typeof navigator !== 'undefined' ? (navigator.platform ?? 'unknown') : 'server';
+}
+
+/**
+ * Derive the OpenClaw device id from an Ed25519 public key: the SHA-256 of the
+ * raw 32-byte public key, hex-encoded (64 chars). The gateway computes the same
+ * value and rejects connects whose device.id does not match
+ * (DEVICE_AUTH_DEVICE_ID_MISMATCH). Deriving it here lets operators supply only
+ * the keypair (CLAWSPRAWL_DEVICE_PUBLIC_KEY) instead of also computing the id.
+ */
+function deriveDeviceId(publicKeyPem: string): string | undefined {
+  try {
+    const der = createPublicKey(Buffer.from(publicKeyPem, 'utf-8')).export({ type: 'spki', format: 'der' });
+    const raw = der.subarray(der.length - 32); // Ed25519 raw public key (last 32 bytes of SPKI DER)
+    return createHash('sha256').update(raw).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Build the v3 device auth signature payload string.
  * The gateway reconstructs this exact string and verifies the signature against it.
  */
@@ -139,10 +166,9 @@ function buildDeviceAuthPayloadV3(params: {
  * Sign the connect challenge with an Ed25519 private key using the v3 payload format.
  * Returns a base64url-encoded signature, or undefined if signing fails.
  */
-function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyPem: string): { signature: string; signedAt: number } | undefined {
+function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyPem: string, deviceId: string): { signature: string; signedAt: number } | undefined {
   try {
     const signedAt = Date.now();
-    const deviceId = options.deviceId!;
     const payload = buildDeviceAuthPayloadV3({
       deviceId,
       clientId: options.clientId ?? 'gateway-client',
@@ -152,7 +178,7 @@ function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyP
       signedAtMs: signedAt,
       token: options.token ?? '',
       nonce,
-      platform: typeof navigator !== 'undefined' ? navigator.platform ?? 'unknown' : 'server',
+      platform: resolveClientPlatform(),
     });
     const key = createPrivateKey(Buffer.from(privateKeyPem, 'utf-8'));
     const signature = ed25519Sign(undefined, Buffer.from(payload, 'utf-8'), key);
@@ -163,16 +189,19 @@ function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyP
 }
 
 export function buildConnectParams(options: GatewayClientOptions, challengeNonce?: string): ConnectParams {
-  const signed = (challengeNonce && options.deviceId && options.devicePrivateKey)
-    ? signChallenge(options, challengeNonce, options.devicePrivateKey)
+  // device.id is derived from the public key (sha256 of the raw Ed25519 key) when
+  // not supplied explicitly — matching the OpenClaw gateway's device-identity check.
+  const deviceId = options.deviceId ?? (options.devicePublicKey ? deriveDeviceId(options.devicePublicKey) : undefined);
+  const signed = (challengeNonce && deviceId && options.devicePrivateKey)
+    ? signChallenge(options, challengeNonce, options.devicePrivateKey, deviceId)
     : undefined;
   return {
     minProtocol: MIN_PROTOCOL_VERSION,
-    maxProtocol: PROTOCOL_VERSION,
+    maxProtocol: options.maxProtocol ?? PROTOCOL_VERSION,
     client: {
       id: options.clientId ?? 'gateway-client',
       version: options.clientVersion ?? CLIENT_VERSION,
-      platform: typeof navigator !== 'undefined' ? navigator.platform ?? 'unknown' : 'unknown',
+      platform: resolveClientPlatform(),
       mode: options.clientMode ?? 'ui',
       ...(options.clientDisplayName ? { displayName: options.clientDisplayName } : {}),
     },
@@ -184,9 +213,10 @@ export function buildConnectParams(options: GatewayClientOptions, challengeNonce
     } : options.deviceToken ? { auth: { deviceToken: options.deviceToken } } : {}),
     role: options.role ?? 'operator',
     scopes: options.scopes ?? ['operator.read'],
-    ...(options.deviceId ? {
+    ...(options.caps?.length ? { caps: options.caps } : {}),
+    ...(deviceId ? {
       device: {
-        id: options.deviceId,
+        id: deviceId,
         publicKey: options.devicePublicKey ?? '',
         ...(challengeNonce ? { nonce: challengeNonce } : {}),
         ...(signed ? { signature: signed.signature, signedAt: signed.signedAt } : {}),
