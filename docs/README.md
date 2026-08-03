@@ -7,7 +7,7 @@ Last reviewed for release baseline: `v0.44.0`.
 ## Start Here
 
 - Repository homepage and setup: [`../README.md`](../README.md)
-- This docs index: [`README.md`](README.md)
+- This docs index: [`README.md`](./README.md)
 - Screenshots directory: [`screenshots/`](screenshots/)
 
 ## What Goes Where

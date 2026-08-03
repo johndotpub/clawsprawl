@@ -1,6 +1,7 @@
+---
 name: publish-gpr
 
-on:
+"on":
   release:
     types: [published]
 
@@ -14,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -23,13 +26,11 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
 
       - name: Validate package scope for GitHub Packages
-        run: |
-          node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const owner=(process.env.GITHUB_REPOSITORY_OWNER||'').toLowerCase(); const expected='@'+owner+'/'; if(!owner){ console.error('GITHUB_REPOSITORY_OWNER is missing'); process.exit(1);} if(!pkg.name || !pkg.name.toLowerCase().startsWith(expected)){ console.error('package.json name must be scoped for GitHub Packages. Expected prefix: '+expected+' (current: '+String(pkg.name)+')'); process.exit(1);}"
+        run: node scripts/qa/validate-package-scope.mjs
 
       - name: Validate git tag matches package version
         if: github.event_name == 'release'
-        run: |
-          node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); const tag=String(process.env.GITHUB_REF_NAME||''); const expected='v'+pkg.version; if(tag!==expected){ console.error('Release tag must match package version. expected='+expected+' actual='+tag); process.exit(1);}"
+        run: node scripts/qa/validate-tag-version.mjs
 
       - name: Install deps
         run: npm ci
