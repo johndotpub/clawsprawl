@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-FROM cgr.dev/chainguard/node@sha256:7740ce8ef7cce4b0892e85813cbb39abe48c56bd48290cb18b9ea721480263f3 AS deps
+FROM cgr.dev/chainguard/node@sha256:753a66014b1310b8f93c76d4cac41d039958b9a86dd44a245289d6cb85455582 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-FROM cgr.dev/chainguard/node@sha256:7740ce8ef7cce4b0892e85813cbb39abe48c56bd48290cb18b9ea721480263f3 AS build
+FROM cgr.dev/chainguard/node@sha256:753a66014b1310b8f93c76d4cac41d039958b9a86dd44a245289d6cb85455582 AS build
 WORKDIR /app
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY package.json package-lock.json astro.config.mjs tsconfig.json ./
@@ -13,12 +13,12 @@ COPY src/ ./src/
 COPY public/ ./public/
 RUN npm ci --ignore-scripts && npm run build
 
-FROM cgr.dev/chainguard/node@sha256:7740ce8ef7cce4b0892e85813cbb39abe48c56bd48290cb18b9ea721480263f3 AS prod-deps
+FROM cgr.dev/chainguard/node@sha256:753a66014b1310b8f93c76d4cac41d039958b9a86dd44a245289d6cb85455582 AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
-FROM cgr.dev/chainguard/node@sha256:7740ce8ef7cce4b0892e85813cbb39abe48c56bd48290cb18b9ea721480263f3 AS runner
+FROM cgr.dev/chainguard/node@sha256:753a66014b1310b8f93c76d4cac41d039958b9a86dd44a245289d6cb85455582 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
