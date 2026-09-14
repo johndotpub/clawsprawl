@@ -1,32 +1,81 @@
 version: 2
+
+# NOTE: Dependabot *security* updates (auto-PR-on-advisory) are a repository
+# setting, not a dependabot.yml key — enable in Settings > Code security.
+
 updates:
+  # ------------------------------------------------------------------ npm
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+      time: "06:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 8
+    versioning-strategy: increase
+    rebase-strategy: auto
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps-dev)"
+      include: scope
+    labels:
+      - dependencies
     groups:
-      npm-prod:
+      # Minor + patch only. Majors deliberately fall out of every group and
+      # open as individual, human-reviewed PRs (prevents a repeat of the
+      # typescript 6 -> 7 group-ride breakage of 2026-09-14).
+      npm-prod-minor-patch:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
         patterns:
           - "*"
-      npm-dev:
+      npm-dev-minor-patch:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
         patterns:
           - "*"
+        exclude-patterns:
+          # Peer-coupled toolchain: 1-PR-per-dep, human-reviewed, never
+          # grouped and never auto-merged.
+          - "typescript"
+          - "astro"
+          - "vitest"
+          - "@vitest/*"
 
+  # ------------------------------------------------------- github-actions
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: tuesday
+      time: "06:00"
+      timezone: America/Los_Angeles
     open-pull-requests-limit: 5
+    rebase-strategy: auto
+    labels:
+      - dependencies
     groups:
-      github-actions:
+      github-actions-minor-patch:
+        update-types:
+          - minor
+          - patch
         patterns:
           - "*"
 
+  # ---------------------------------------------------------------- docker
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: wednesday
+      time: "06:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 3
+    rebase-strategy: auto
+    labels:
+      - dependencies

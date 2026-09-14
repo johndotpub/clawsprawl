@@ -47,7 +47,7 @@
     "audit:prod": "node scripts/qa/audit-check.mjs --omit=dev --audit-level=moderate",
     "docs:screenshots": "DOCS_SCREENSHOTS=1 OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789/ws OPENCLAW_GATEWAY_HTTP_URL=http://127.0.0.1:18789 CLAWSPRAWL_MODE=public playwright test tests/e2e/docs-screenshots.spec.ts && DOCS_SCREENSHOTS=1 OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789/ws OPENCLAW_GATEWAY_HTTP_URL=http://127.0.0.1:18789 CLAWSPRAWL_MODE=insecure playwright test tests/e2e/docs-screenshots.spec.ts",
     "qa": "npm run test && npm run build && npm run test:e2e",
-    "qa:strict": "npm run lint && npm run lint:shell && npm run typecheck && npm run test:unit:coverage && npm run test:docs:coverage && npm run audit && npm run build",
+    "qa:strict": "npm run lint && npm run lint:shell && npm run typecheck && npm run test:unit:coverage && npm run test:docs:coverage && npm run build",
     "ops": "bash scripts/cs-ops.sh",
     "tmux:up": "bash scripts/cs-ops.sh tmux-up",
     "profile:local:init": "node scripts/setup-local-profile.mjs",
@@ -69,12 +69,12 @@
     "@typescript-eslint/parser": "^8.65.0",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^10.10.0",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^5.0.0"
   },
   "overrides": {
     "esbuild": "0.28.1",
-    "fast-uri": "3.1.5",
+    "fast-uri": "3.1.7",
     "postcss": "^8.5.25",
     "yaml": "^2.9.0"
   },
@@ -83,6 +83,6 @@
   },
   "allowScripts": {
     "esbuild@0.28.1": true,
-    "sharp@0.34.5": true
+    "sharp@0.35.4": true
   }
 }

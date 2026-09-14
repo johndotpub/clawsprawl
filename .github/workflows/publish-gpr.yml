@@ -44,6 +44,9 @@ jobs:
       - name: Run strict QA gates
         run: npm run qa:strict
 
+      - name: Run production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+
       - name: Verify package artifact contents
         run: npm pack --dry-run
 

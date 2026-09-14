@@ -7,13 +7,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const script = resolve(here, '..', '..', 'scripts', 'qa', 'audit-check.mjs');
 
 /**
- * Dependency security audit enforcement.
+ * Production dependency security audit enforcement.
  *
- * Runs `scripts/qa/audit-check.mjs`, which shells out to `npm audit --json` and
- * fails if any vulnerabilities at/above `moderate` are present across the FULL
- * dependency tree (production + development). This keeps every commit gated on
- * a clean audit locally — not just in CI — so a contributor cannot land a
- * change that reintroduces a known advisory without `npm test` failing.
+ * Runs `scripts/qa/audit-check.mjs --omit=dev`, which shells out to
+ * `npm audit --json` and fails if any PRODUCTION vulnerabilities at/above
+ * `moderate` are present. The full-tree (prod + dev) audit runs as an
+ * advisory CI job (ci.yml `dependency-audit`, continue-on-error) — dev-tree
+ * transitive advisories must not block every PR; they are handled by
+ * Dependabot security updates instead.
  *
  * Exit codes from the script:
  *   0 — clean (no vulnerabilities at/above the level)
@@ -22,8 +23,8 @@ const script = resolve(here, '..', '..', 'scripts', 'qa', 'audit-check.mjs');
  *       so an offline local run does not false-fail; CI is the authoritative gate.
  */
 describe('dependency security audit', () => {
-  it('has no vulnerabilities at/above moderate (production + dev)', () => {
-    const res = spawnSync('node', [script], {
+  it('has no vulnerabilities at/above moderate (production deps)', () => {
+    const res = spawnSync('node', [script, '--omit=dev'], {
       encoding: 'utf8',
       timeout: 120_000,
     });

@@ -1,0 +1,82 @@
+---
+name: dependabot-auto-merge
+
+# Auto-approve and auto-merge Dependabot minor/patch bumps once required
+# status checks pass. Hard prerequisites (owner settings, NOT in this PR):
+#   - allow_auto_merge: true        (else --auto errors)
+#   - required_status_checks in ruleset 15043796 (else --auto merges instantly)
+# Rollout order documented in the PR body.
+"on":
+  pull_request:
+
+# Dependabot-triggered runs get a READ-ONLY GITHUB_TOKEN and no Actions
+# secrets (treated like fork PRs). This explicit permissions block is what
+# raises scope so gh pr review / gh pr merge work.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: |
+      github.repository == 'johndotpub/clawsprawl' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Classify update (minor/patch only, never toolchain)
+        id: gate
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPS: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+          echo "update-type=${UPDATE_TYPE} deps=${DEPS}"
+
+          eligible=true
+
+          # 1) minor/patch only. Majors — and grouped PRs, whose update-type
+          #    is empty — always require a human.
+          case "${UPDATE_TYPE}" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) eligible=false ;;
+          esac
+
+          # 2) never auto-merge the peer-coupled toolchain, even for a patch
+          if printf '%s\n' "${DEPS}" \
+             | grep -Eq '(^|[, ])(typescript|astro|vitest|eslint|@astrojs/check|@astrojs/language-server|@vitest/[a-z-]+|@typescript-eslint/[a-z-]+)(@|$|[, ])'; then
+            eligible=false
+          fi
+
+          echo "eligible=${eligible}" >> "${GITHUB_OUTPUT}"
+
+      - name: Approve PR (satisfies require_code_owner_review)
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr review --approve --body "Auto-approved: Dependabot minor/patch, gated on required checks." "${PR_URL}"
+
+      # --merge not --squash: ruleset allowed_merge_methods = [rebase, merge].
+      # --auto waits for REQUIRED status checks. If allow_auto_merge is still
+      # disabled (owner setting), warn instead of failing the job.
+      - name: Enable auto-merge
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh pr merge --auto --merge "${PR_URL}"; then
+            echo "::warning::Could not enable auto-merge (is allow_auto_merge enabled in repo settings?)"
+          fi
