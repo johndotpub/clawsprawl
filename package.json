@@ -28,7 +28,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=26.1.0"
   },
   "scripts": {
     "dev": "astro dev",

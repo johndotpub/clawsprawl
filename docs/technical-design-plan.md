@@ -301,3 +301,7 @@ Status legend: `[ ]` pending, `[~]` in progress, `[x]` complete.
 - Optional additional profile packs for public demo storytelling
 
 Deferred items are intentionally unscheduled and are not release blockers.
+
+## Node Runtime Floor (2026-09-14)
+
+The OpenClaw gateway (v2026.9.3+) requires Node 24.16.0+/26.1.0+. ClawSprawl aligns its local toolchain to Node 26.x (`.nvmrc` 26.8.2, `engines.node` `>=26.1.0`) to match the co-hosted gateway runtime and avoid SQLite text-truncation risk from old Node builds. The Dockerfile pins `cgr.dev/chainguard/node` by digest, which currently ships Node 26.8.2 (verified 2026-09-14), so no Dockerfile change was needed.
