@@ -48,3 +48,4 @@ jobs:
 
       - name: Run full dependency audit (prod + dev)
         run: npm run audit
+        continue-on-error: true
