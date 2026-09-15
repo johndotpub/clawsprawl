@@ -1,14 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GatewayClient, verifyGatewayNonce } from './client';
-import { PROTOCOL_VERSION, resetRequestCounter } from './protocol';
-import { canTransitionConnectionState } from './state-machine';
-import type { GatewayClientOptions } from './types';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GatewayClient, verifyGatewayNonce } from "./client";
+import { PROTOCOL_VERSION, resetRequestCounter } from "./protocol";
+import { canTransitionConnectionState } from "./state-machine";
+import type { EventFrame, GatewayClientOptions } from "./types";
 
 /** Shared gateway URL for client fixtures. */
-const TEST_URL = 'ws://localhost:18789/ws';
+const TEST_URL = "ws://localhost:18789/ws";
 
 /** Factory for the repeated client options used across most tests. */
-function makeClient(overrides: Partial<GatewayClientOptions> = {}): GatewayClient {
+function makeClient(
+  overrides: Partial<GatewayClientOptions> = {},
+): GatewayClient {
   return new GatewayClient({
     url: TEST_URL,
     reconnect: false,
@@ -21,17 +23,21 @@ function makeClient(overrides: Partial<GatewayClientOptions> = {}): GatewayClien
 // Minimal HelloOk fixture matching the real gateway response shape
 // ---------------------------------------------------------------------------
 const HELLO_OK_FIXTURE = {
-  type: 'hello-ok' as const,
+  type: "hello-ok" as const,
   protocol: PROTOCOL_VERSION,
-  server: { version: '2026.4.5', connId: 'test-conn-1' },
-  features: { methods: ['status', 'agents.list'], events: ['tick', 'health'] },
+  server: { version: "2026.4.5", connId: "test-conn-1" },
+  features: { methods: ["status", "agents.list"], events: ["tick", "health"] },
   snapshot: {
     presence: [],
     health: {},
     stateVersion: { presence: 0, health: 0 },
     uptimeMs: 1000,
   },
-  policy: { maxPayload: 1_048_576, maxBufferedBytes: 4_194_304, tickIntervalMs: 15_000 },
+  policy: {
+    maxPayload: 1_048_576,
+    maxBufferedBytes: 4_194_304,
+    tickIntervalMs: 15_000,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -91,34 +97,63 @@ class MockWebSocket {
     this.triggerOpen();
 
     // Server sends challenge
-    this.triggerMessage(JSON.stringify({
-      type: 'event',
-      event: 'connect.challenge',
-      payload: { nonce: 'test-nonce-123', ts: Date.now() },
-    }));
+    this.triggerMessage(
+      JSON.stringify({
+        type: "event",
+        event: "connect.challenge",
+        payload: { nonce: "test-nonce-123", ts: Date.now() },
+      }),
+    );
 
     // Client should have sent a connect request — find it
     const connectMsg = this.sent.find((s) => {
-      try { return JSON.parse(s).method === 'connect'; } catch { return false; }
+      try {
+        return JSON.parse(s).method === "connect";
+      } catch {
+        return false;
+      }
     });
     if (!connectMsg) {
-      throw new Error('MockWebSocket: client never sent connect request during handshake');
+      throw new Error(
+        "MockWebSocket: client never sent connect request during handshake",
+      );
     }
     const connectReq = JSON.parse(connectMsg) as { id: string };
 
     // Server responds with hello-ok
-    this.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: connectReq.id,
-      ok: true,
-      payload: helloOk,
-    }));
+    this.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: connectReq.id,
+        ok: true,
+        payload: helloOk,
+      }),
+    );
   }
 }
 
 const originalWebSocket = globalThis.WebSocket;
 
-describe('gateway client', () => {
+/**
+ * MockWebSocket with the Node `ws` package's EventEmitter surface, so the
+ * client's `unexpected-response` upgrade-failure handling can be exercised.
+ */
+class EmittingMockWebSocket extends MockWebSocket {
+  private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+
+  on(event: string, listener: (...args: unknown[]) => void): this {
+    const existing = this.listeners.get(event) ?? [];
+    existing.push(listener);
+    this.listeners.set(event, existing);
+    return this;
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(...args);
+  }
+}
+
+describe("gateway client", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     MockWebSocket.instances = [];
@@ -135,19 +170,19 @@ describe('gateway client', () => {
 
   // --- Connection lifecycle ---
 
-  it('connects via challenge-response handshake and transitions to connected', async () => {
+  it("connects via challenge-response handshake and transitions to connected", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
 
     MockWebSocket.instances[0]?.completeHandshake();
     const helloOk = await connectPromise;
 
-    expect(client.connectionState).toBe('connected');
+    expect(client.connectionState).toBe("connected");
     expect(helloOk.protocol).toBe(PROTOCOL_VERSION);
-    expect(helloOk.server.version).toBe('2026.4.5');
+    expect(helloOk.server.version).toBe("2026.4.5");
   });
 
-  it('transitions through handshaking state during connect', async () => {
+  it("transitions through handshaking state during connect", async () => {
     const client = makeClient();
     const states: string[] = [];
     client.onStateChange((s) => states.push(s));
@@ -156,11 +191,11 @@ describe('gateway client', () => {
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
 
-    expect(states).toContain('handshaking');
-    expect(states).toContain('connected');
+    expect(states).toContain("handshaking");
+    expect(states).toContain("connected");
   });
 
-  it('populates helloOk, snapshot, and availableMethods after connect', async () => {
+  it("populates helloOk, snapshot, and availableMethods after connect", async () => {
     const client = makeClient();
     expect(client.helloOk).toBeNull();
     expect(client.snapshot).toBeNull();
@@ -173,90 +208,113 @@ describe('gateway client', () => {
     expect(client.helloOk).not.toBeNull();
     expect(client.helloOk?.protocol).toBe(PROTOCOL_VERSION);
     expect(client.snapshot?.uptimeMs).toBe(1000);
-    expect(client.availableMethods).toEqual(['status', 'agents.list']);
+    expect(client.availableMethods).toEqual(["status", "agents.list"]);
   });
 
   // --- RPC calls ---
 
-  it('sends native request frames and resolves response payloads', async () => {
+  it("sends native request frames and resolves response payloads", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
     await connectPromise;
 
-    const callPromise = client.call<{ ok: boolean }>('status');
+    const callPromise = client.call<{ ok: boolean }>("status");
     // Find the status request (skip the connect request)
     const statusMsg = socket.sent.find((s) => {
-      try { const p = JSON.parse(s); return p.method === 'status'; } catch { return false; }
+      try {
+        const p = JSON.parse(s);
+        return p.method === "status";
+      } catch {
+        return false;
+      }
     });
     expect(statusMsg).toBeTruthy();
     const request = JSON.parse(statusMsg!) as { id: string };
 
-    socket.triggerMessage(JSON.stringify({ type: 'res', id: request.id, ok: true, payload: { ok: true } }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: request.id,
+        ok: true,
+        payload: { ok: true },
+      }),
+    );
     await expect(callPromise).resolves.toEqual({ ok: true });
   });
 
-  it('times out rpc requests when no response arrives', async () => {
+  it("times out rpc requests when no response arrives", async () => {
     const client = makeClient({ rpcTimeoutMs: 100 });
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
 
-    const callPromise = client.call('status');
-    const assertion = expect(callPromise).rejects.toThrow('RPC timeout: status');
+    const callPromise = client.call("status");
+    const assertion = expect(callPromise).rejects.toThrow(
+      "RPC timeout: status",
+    );
     await vi.advanceTimersByTimeAsync(120);
     await assertion;
   });
 
-  it('rejects pending call when response contains an error', async () => {
+  it("rejects pending call when response contains an error", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
     await connectPromise;
 
-    const callPromise = client.call('badMethod');
+    const callPromise = client.call("badMethod");
     const badMsg = socket.sent.find((s) => {
-      try { const p = JSON.parse(s); return p.method === 'badMethod'; } catch { return false; }
+      try {
+        const p = JSON.parse(s);
+        return p.method === "badMethod";
+      } catch {
+        return false;
+      }
     });
     const request = JSON.parse(badMsg!) as { id: string };
 
-    socket.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: request.id,
-      ok: false,
-      error: { code: 'NOT_FOUND', message: 'method not found' },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: request.id,
+        ok: false,
+        error: { code: "NOT_FOUND", message: "method not found" },
+      }),
+    );
 
-    await expect(callPromise).rejects.toThrow('method not found');
+    await expect(callPromise).rejects.toThrow("method not found");
   });
 
-  it('rejects call() when socket is not connected', async () => {
+  it("rejects call() when socket is not connected", async () => {
     const client = makeClient();
-    await expect(client.call('status')).rejects.toThrow('Socket is not connected');
+    await expect(client.call("status")).rejects.toThrow(
+      "Socket is not connected",
+    );
   });
 
-  it('rejects all pending calls on disconnect()', async () => {
+  it("rejects all pending calls on disconnect()", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
 
-    const p1 = client.call('a');
-    const p2 = client.call('b');
+    const p1 = client.call("a");
+    const p2 = client.call("b");
     client.disconnect();
 
-    await expect(p1).rejects.toThrow('Disconnected');
-    await expect(p2).rejects.toThrow('Disconnected');
+    await expect(p1).rejects.toThrow("Disconnected");
+    await expect(p2).rejects.toThrow("Disconnected");
   });
 
   // --- Reconnection ---
 
-  it('schedules reconnect after close when enabled', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+  it("schedules reconnect after close when enabled", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const client = new GatewayClient({
-      url: 'ws://localhost:18789/ws',
+      url: "ws://localhost:18789/ws",
       reconnect: true,
       connectTimeoutMs: 5000,
       minReconnectDelayMs: 100,
@@ -273,10 +331,10 @@ describe('gateway client', () => {
     expect(MockWebSocket.instances.length).toBeGreaterThan(1);
   });
 
-  it('does not reconnect after explicit disconnect()', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+  it("does not reconnect after explicit disconnect()", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const client = new GatewayClient({
-      url: 'ws://localhost:18789/ws',
+      url: "ws://localhost:18789/ws",
       reconnect: true,
       connectTimeoutMs: 5000,
       minReconnectDelayMs: 50,
@@ -295,23 +353,23 @@ describe('gateway client', () => {
 
   // --- Disconnect ---
 
-  it('transitions to disconnected after disconnect()', async () => {
+  it("transitions to disconnected after disconnect()", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
 
-    expect(client.connectionState).toBe('connected');
+    expect(client.connectionState).toBe("connected");
     client.disconnect();
-    expect(client.connectionState).toBe('disconnected');
+    expect(client.connectionState).toBe("disconnected");
   });
 
   // --- Fallback URL ---
 
-  it('falls back to fallbackUrl when primary fails', async () => {
+  it("falls back to fallbackUrl when primary fails", async () => {
     const client = new GatewayClient({
-      url: 'ws://127.0.0.1:18789/ws',
-      fallbackUrl: 'ws://localhost:18789/ws',
+      url: "ws://127.0.0.1:18789/ws",
+      fallbackUrl: "ws://localhost:18789/ws",
       reconnect: false,
       connectTimeoutMs: 5000,
     });
@@ -325,16 +383,16 @@ describe('gateway client', () => {
     await vi.advanceTimersByTimeAsync(0);
     const fallbackSocket = MockWebSocket.instances[1];
     expect(fallbackSocket).toBeTruthy();
-    expect(fallbackSocket?.url).toBe('ws://localhost:18789/ws');
+    expect(fallbackSocket?.url).toBe("ws://localhost:18789/ws");
 
     fallbackSocket?.completeHandshake();
     await connectPromise;
-    expect(client.connectionState).toBe('connected');
+    expect(client.connectionState).toBe("connected");
   });
 
   // --- Events ---
 
-  it('emits native event frames to registered listeners', async () => {
+  it("emits native event frames to registered listeners", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -344,32 +402,38 @@ describe('gateway client', () => {
     const received: unknown[] = [];
     client.onEvent((event) => received.push(event));
 
-    socket.triggerMessage(JSON.stringify({ type: 'event', event: 'tick', payload: { ts: 12345 } }));
+    socket.triggerMessage(
+      JSON.stringify({ type: "event", event: "tick", payload: { ts: 12345 } }),
+    );
     expect(received).toHaveLength(1);
-    expect(received[0]).toEqual({ type: 'event', event: 'tick', payload: { ts: 12345 } });
+    expect(received[0]).toEqual({
+      type: "event",
+      event: "tick",
+      payload: { ts: 12345 },
+    });
   });
 
   // --- Subscriptions ---
 
-  it('unsubscribes state and event listeners correctly', async () => {
+  it("unsubscribes state and event listeners correctly", async () => {
     const client = makeClient();
 
     const states: string[] = [];
     const unsub = client.onStateChange((s) => states.push(s));
     // Immediate callback with current state
-    expect(states).toEqual(['idle']);
+    expect(states).toEqual(["idle"]);
     unsub();
 
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
     await connectPromise;
     // Should NOT have received 'connecting', 'handshaking', or 'connected' after unsub
-    expect(states).toEqual(['idle']);
+    expect(states).toEqual(["idle"]);
   });
 
   // --- Timeout ---
 
-  it('connection times out when handshake never completes', async () => {
+  it("connection times out when handshake never completes", async () => {
     const client = makeClient({ connectTimeoutMs: 50 });
     const connectPromise = client.connect();
     // Open socket but never send challenge
@@ -382,7 +446,7 @@ describe('gateway client', () => {
 
   // --- Malformed messages ---
 
-  it('ignores malformed messages without crashing', async () => {
+  it("ignores malformed messages without crashing", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -390,21 +454,96 @@ describe('gateway client', () => {
     await connectPromise;
 
     // These should not throw
-    socket.triggerMessage('not json');
-    socket.triggerMessage(JSON.stringify({ random: 'object' }));
+    socket.triggerMessage("not json");
+    socket.triggerMessage(JSON.stringify({ random: "object" }));
     socket.triggerMessage(JSON.stringify(null));
     socket.triggerMessage(42);
 
-    expect(client.connectionState).toBe('connected');
+    expect(client.connectionState).toBe("connected");
+  });
+
+  // --- Compression / non-string frame guard (BC-7) ---
+
+  it("warns once and counts non-string frames while staying connected", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = makeClient();
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.completeHandshake();
+    await connectPromise;
+
+    expect(client.nonStringFrameCount).toBe(0);
+
+    socket.triggerMessage(Buffer.from("compressed-or-binary"));
+    socket.triggerMessage(new Uint8Array([1, 2, 3]));
+
+    expect(client.nonStringFrameCount).toBe(2);
+    const frameWarnings = warnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("non-string WebSocket frame"),
+    );
+    expect(frameWarnings).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[clawsprawl:client] received non-string WebSocket frame (compressed or binary); frame ignored",
+    );
+    expect(client.connectionState).toBe("connected");
+  });
+
+  // --- Events across socket generations (BC-1) ---
+
+  it("delivers events from successive socket generations without seq-gap recovery", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const client = new GatewayClient({
+      url: TEST_URL,
+      reconnect: true,
+      connectTimeoutMs: 5000,
+      minReconnectDelayMs: 100,
+      maxReconnectDelayMs: 200,
+    });
+
+    const received: EventFrame[] = [];
+    client.onEvent((event) => received.push(event));
+
+    const sendEvents = (socket: MockWebSocket, seqs: number[]) => {
+      for (const seq of seqs) {
+        socket.triggerMessage(
+          JSON.stringify({
+            type: "event",
+            event: "tick",
+            payload: { seq },
+            seq,
+          }),
+        );
+      }
+    };
+
+    const firstConnect = client.connect();
+    MockWebSocket.instances[0]?.completeHandshake();
+    await firstConnect;
+
+    sendEvents(MockWebSocket.instances[0]!, [1, 2, 3]);
+    expect(received.map((event) => event.seq)).toEqual([1, 2, 3]);
+
+    // Force close → reconnect: the gateway restarts the event-sequence baseline.
+    MockWebSocket.instances[0]!.triggerClose();
+    await vi.advanceTimersByTimeAsync(110);
+    expect(MockWebSocket.instances.length).toBe(2);
+
+    MockWebSocket.instances[1]?.completeHandshake();
+    await vi.advanceTimersByTimeAsync(0);
+
+    sendEvents(MockWebSocket.instances[1]!, [1, 2]);
+    // Both generations delivered verbatim: no dropped or de-duplicated events.
+    expect(received.map((event) => event.seq)).toEqual([1, 2, 3, 1, 2]);
   });
 
   // --- Handshake sends correct connect params ---
 
-  it('sends connect request with auth token in ConnectParams', async () => {
+  it("sends connect request with auth token in ConnectParams", async () => {
     const client = new GatewayClient({
-      url: 'ws://localhost:18789/ws',
-      token: 'my-secret-token',
-      clientId: 'openclaw-control-ui',
+      url: "ws://localhost:18789/ws",
+      token: "my-secret-token",
+      clientId: "openclaw-control-ui",
       reconnect: false,
       connectTimeoutMs: 5000,
     });
@@ -414,17 +553,23 @@ describe('gateway client', () => {
     await connectPromise;
 
     const connectMsg = socket.sent.find((s) => {
-      try { return JSON.parse(s).method === 'connect'; } catch { return false; }
+      try {
+        return JSON.parse(s).method === "connect";
+      } catch {
+        return false;
+      }
     });
     expect(connectMsg).toBeTruthy();
-    const parsed = JSON.parse(connectMsg!) as { params: { auth: { token: string }; client: { id: string } } };
-    expect(parsed.params.auth.token).toBe('my-secret-token');
-    expect(parsed.params.client.id).toBe('openclaw-control-ui');
+    const parsed = JSON.parse(connectMsg!) as {
+      params: { auth: { token: string }; client: { id: string } };
+    };
+    expect(parsed.params.auth.token).toBe("my-secret-token");
+    expect(parsed.params.client.id).toBe("openclaw-control-ui");
   });
 
   // --- Coverage gap: connect() when already connected (lines 104-105) ---
 
-  it('returns cached helloOk when connect() called while already connected', async () => {
+  it("returns cached helloOk when connect() called while already connected", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -440,7 +585,7 @@ describe('gateway client', () => {
 
   // --- Coverage gap: onEvent unsubscribe (line 149) ---
 
-  it('stops receiving events after onEvent unsubscribe', async () => {
+  it("stops receiving events after onEvent unsubscribe", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -450,19 +595,23 @@ describe('gateway client', () => {
     const received: unknown[] = [];
     const unsub = client.onEvent((event) => received.push(event));
 
-    socket.triggerMessage(JSON.stringify({ type: 'event', event: 'tick', payload: { ts: 1 } }));
+    socket.triggerMessage(
+      JSON.stringify({ type: "event", event: "tick", payload: { ts: 1 } }),
+    );
     expect(received).toHaveLength(1);
 
     unsub();
 
-    socket.triggerMessage(JSON.stringify({ type: 'event', event: 'tick', payload: { ts: 2 } }));
+    socket.triggerMessage(
+      JSON.stringify({ type: "event", event: "tick", payload: { ts: 2 } }),
+    );
     // Should NOT have received the second event
     expect(received).toHaveLength(1);
   });
 
   // --- Coverage gap: handshake failure path (lines 232-235) ---
 
-  it('rejects connect when server responds with error during handshake', async () => {
+  it("rejects connect when server responds with error during handshake", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -471,33 +620,153 @@ describe('gateway client', () => {
     socket.triggerOpen();
 
     // Server sends challenge
-    socket.triggerMessage(JSON.stringify({
-      type: 'event',
-      event: 'connect.challenge',
-      payload: { nonce: 'test-nonce', ts: Date.now() },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "event",
+        event: "connect.challenge",
+        payload: { nonce: "test-nonce", ts: Date.now() },
+      }),
+    );
 
     // Client should have sent a connect request
     const connectMsg = socket.sent.find((s) => {
-      try { return JSON.parse(s).method === 'connect'; } catch { return false; }
+      try {
+        return JSON.parse(s).method === "connect";
+      } catch {
+        return false;
+      }
     });
     expect(connectMsg).toBeTruthy();
     const connectReq = JSON.parse(connectMsg!) as { id: string };
 
     // Server responds with error (handshake failure)
-    socket.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: connectReq.id,
-      ok: false,
-      error: { code: 'AUTH_FAILED', message: 'invalid token' },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: connectReq.id,
+        ok: false,
+        error: { code: "AUTH_FAILED", message: "invalid token" },
+      }),
+    );
 
-    await expect(connectPromise).rejects.toThrow('invalid token');
+    await expect(connectPromise).rejects.toThrow("invalid token");
+  });
+
+  // --- Pre-WS handshake failure is retryable (BC-9) ---
+
+  it("flags pre-handshake socket errors as retryable gateway-unavailable", async () => {
+    const client = makeClient({ reconnect: true });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+
+    // MockWebSocket has no EventEmitter `.on`, so the runtime cannot report an
+    // HTTP upgrade response — error is treated as potentially transient.
+    socket.onerror?.();
+
+    try {
+      await connectPromise;
+      expect.fail("should have rejected");
+    } catch (err) {
+      const handshakeError = err as Error & {
+        retryable?: boolean;
+        code?: string;
+      };
+      expect(handshakeError.retryable).toBe(true);
+      expect(handshakeError.code).toBe("GATEWAY_UNAVAILABLE");
+    }
+  });
+
+  it("flags a 5xx upgrade response as retryable gateway-unavailable", async () => {
+    // @ts-expect-error test mock
+    globalThis.WebSocket = EmittingMockWebSocket;
+    const client = makeClient({ reconnect: true });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0] as EmittingMockWebSocket;
+
+    socket.emit(
+      "unexpected-response",
+      {},
+      { statusCode: 503, statusMessage: "Service Unavailable" },
+    );
+
+    try {
+      await connectPromise;
+      expect.fail("should have rejected");
+    } catch (err) {
+      const handshakeError = err as Error & {
+        retryable?: boolean;
+        code?: string;
+      };
+      expect(handshakeError.retryable).toBe(true);
+      expect(handshakeError.code).toBe("GATEWAY_UNAVAILABLE");
+      expect(handshakeError.message).toContain("HTTP 503");
+    }
+  });
+
+  it("treats a 4xx upgrade response as a non-retryable socket error", async () => {
+    // @ts-expect-error test mock
+    globalThis.WebSocket = EmittingMockWebSocket;
+    const client = makeClient({ reconnect: true });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0] as EmittingMockWebSocket;
+
+    socket.emit(
+      "unexpected-response",
+      {},
+      { statusCode: 401, statusMessage: "Unauthorized" },
+    );
+
+    try {
+      await connectPromise;
+      expect.fail("should have rejected");
+    } catch (err) {
+      const handshakeError = err as Error & {
+        retryable?: boolean;
+        code?: string;
+      };
+      expect(handshakeError.retryable).toBeUndefined();
+      expect(handshakeError.code).toBeUndefined();
+      expect(handshakeError.message).toBe("Socket error");
+    }
+  });
+
+  it("flags a handshake close as retryable when reconnect is enabled", async () => {
+    const client = makeClient({ reconnect: true });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+
+    socket.triggerOpen();
+    socket.triggerClose();
+
+    try {
+      await connectPromise;
+      expect.fail("should have rejected");
+    } catch (err) {
+      const handshakeError = err as Error & {
+        retryable?: boolean;
+        code?: string;
+      };
+      expect(handshakeError.retryable).toBe(true);
+      expect(handshakeError.code).toBe("GATEWAY_UNAVAILABLE");
+    }
+  });
+
+  it("keeps the generic handshake close error when reconnect is disabled", async () => {
+    const client = makeClient({ reconnect: false });
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[0]!;
+
+    socket.triggerOpen();
+    socket.triggerClose();
+
+    await expect(connectPromise).rejects.toThrow(
+      "Socket closed during handshake",
+    );
   });
 
   // --- Coverage gap: handshake timeout waiting for hello-ok (lines 266-267) ---
 
-  it('times out when server sends challenge but never responds to connect', async () => {
+  it("times out when server sends challenge but never responds to connect", async () => {
     // Use a long connectTimeoutMs so the outer openSocket timeout (line 184)
     // does NOT fire before the inner handshake pending timeout (line 265).
     // Both use connectTimeoutMs, but the inner one is created AFTER the
@@ -513,11 +782,13 @@ describe('gateway client', () => {
     // with its own setTimeout(connectTimeoutMs). Both the outer (line 184)
     // and inner (line 265) fire at 500ms from their start, but the outer
     // was created first. Advance to just before outer fires:
-    socket.triggerMessage(JSON.stringify({
-      type: 'event',
-      event: 'connect.challenge',
-      payload: { nonce: 'test-nonce', ts: Date.now() },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "event",
+        event: "connect.challenge",
+        payload: { nonce: "test-nonce", ts: Date.now() },
+      }),
+    );
 
     // The inner timeout was created slightly after the outer, so if we advance
     // exactly connectTimeoutMs, both fire. The inner pending.reject runs first
@@ -533,11 +804,11 @@ describe('gateway client', () => {
 
   // --- Coverage gap: reconnect failure with exponential backoff (lines 330-331) ---
 
-  it('increases reconnect delay exponentially on repeated failures', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it("increases reconnect delay exponentially on repeated failures", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = new GatewayClient({
-      url: 'ws://localhost:18789/ws',
+      url: "ws://localhost:18789/ws",
       reconnect: true,
       connectTimeoutMs: 50,
       minReconnectDelayMs: 100,
@@ -563,52 +834,87 @@ describe('gateway client', () => {
 
     // The reconnect failed — console.warn should have been called
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('reconnect failed:'),
+      expect.stringContaining("reconnect failed:"),
       expect.any(Error),
     );
 
     warnSpy.mockRestore();
   });
 
+  it("handles a retryable pre-handshake failure on the reconnect path", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new GatewayClient({
+      url: TEST_URL,
+      reconnect: true,
+      connectTimeoutMs: 5000,
+      minReconnectDelayMs: 100,
+      maxReconnectDelayMs: 500,
+    });
+
+    const connectPromise = client.connect();
+    MockWebSocket.instances[0]?.completeHandshake();
+    await connectPromise;
+
+    MockWebSocket.instances[0]?.triggerClose();
+    await vi.advanceTimersByTimeAsync(110);
+    expect(MockWebSocket.instances.length).toBe(2);
+
+    // The reconnect attempt fails before the upgrade completes with a retryable error.
+    MockWebSocket.instances[1]?.onerror?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("reconnect failed:"),
+      expect.objectContaining({ retryable: true, code: "GATEWAY_UNAVAILABLE" }),
+    );
+  });
+
   // --- Coverage gap: invalid state transition guard (line 338) ---
 
-  it('rejects invalid state transitions via the state-machine guard', () => {
+  it("rejects invalid state transitions via the state-machine guard", () => {
     // The client's private setState delegates to canTransitionConnectionState.
     // Verify the guard directly (the source of truth) rather than a
     // tautological integration path that never triggers an invalid transition.
     // Valid transitions are allowed ...
-    expect(canTransitionConnectionState('idle', 'connecting')).toBe(true);
-    expect(canTransitionConnectionState('handshaking', 'connected')).toBe(true);
-    expect(canTransitionConnectionState('connected', 'reconnecting')).toBe(true);
+    expect(canTransitionConnectionState("idle", "connecting")).toBe(true);
+    expect(canTransitionConnectionState("handshaking", "connected")).toBe(true);
+    expect(canTransitionConnectionState("connected", "reconnecting")).toBe(
+      true,
+    );
     // ... while illegal jumps are silently rejected by the guard.
-    expect(canTransitionConnectionState('connected', 'idle')).toBe(false);
-    expect(canTransitionConnectionState('disconnected', 'handshaking')).toBe(false);
-    expect(canTransitionConnectionState('error', 'connected')).toBe(false);
+    expect(canTransitionConnectionState("connected", "idle")).toBe(false);
+    expect(canTransitionConnectionState("disconnected", "handshaking")).toBe(
+      false,
+    );
+    expect(canTransitionConnectionState("error", "connected")).toBe(false);
   });
 
-  // --- verifyGatewayNonce stub ---
+  // --- verifyGatewayNonce: loopback-only enforcement (nonce is not compared) ---
 
-  it('always returns true from verifyGatewayNonce stub', () => {
-    expect(verifyGatewayNonce('any-nonce')).toBe(true);
-    expect(verifyGatewayNonce('')).toBe(true);
+  it("ignores the nonce value — only the loopback gateway URL is enforced", () => {
+    expect(verifyGatewayNonce("any-nonce")).toBe(true);
+    expect(verifyGatewayNonce("")).toBe(true);
   });
 
   // --- ws.send() error handling in call() ---
 
-  it('rejects RPC when ws.send() throws on connected socket', async () => {
+  it("rejects RPC when ws.send() throws on connected socket", async () => {
     const client = makeClient({ rpcTimeoutMs: 500 });
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
     await connectPromise;
 
-    socket.send = () => { throw new Error('not ready'); };
-    await expect(client.call('status')).rejects.toThrow('not ready');
+    socket.send = () => {
+      throw new Error("not ready");
+    };
+    await expect(client.call("status")).rejects.toThrow("not ready");
   });
 
   // --- HelloOk validation ---
 
-  it('rejects handshake when hello-ok payload lacks type field', async () => {
+  it("rejects handshake when hello-ok payload lacks type field", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
@@ -616,59 +922,73 @@ describe('gateway client', () => {
     socket.triggerOpen();
 
     // Send challenge
-    socket.triggerMessage(JSON.stringify({
-      type: 'event',
-      event: 'connect.challenge',
-      payload: { nonce: 'test-nonce-123', ts: Date.now() },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "event",
+        event: "connect.challenge",
+        payload: { nonce: "test-nonce-123", ts: Date.now() },
+      }),
+    );
 
     // Find connect request
     const connectMsg = socket.sent.find((s) => {
-      try { return JSON.parse(s).method === 'connect'; } catch { return false; }
+      try {
+        return JSON.parse(s).method === "connect";
+      } catch {
+        return false;
+      }
     });
     const connectReq = JSON.parse(connectMsg!) as { id: string };
 
     // Respond with payload missing type field
-    socket.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: connectReq.id,
-      ok: true,
-      payload: { protocol: 4, server: { version: '1.0' } },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: connectReq.id,
+        ok: true,
+        payload: { protocol: 4, server: { version: "1.0" } },
+      }),
+    );
 
-    await expect(connectPromise).rejects.toThrow('Invalid HelloOk');
+    await expect(connectPromise).rejects.toThrow("Invalid HelloOk");
   });
 
   // --- Loopback-only nonce enforcement (H2) ---
 
-  it('rejects non-loopback gateway URLs without device identity', () => {
-    expect(() => verifyGatewayNonce('abc', 'wss://gateway.example.com/ws')).toThrow(/Non-loopback/);
+  it("rejects non-loopback gateway URLs without device identity", () => {
+    expect(() =>
+      verifyGatewayNonce("abc", "wss://gateway.example.com/ws"),
+    ).toThrow(/Non-loopback/);
   });
 
-  it('allows loopback gateway URLs', () => {
-    expect(verifyGatewayNonce('abc', 'ws://localhost:18789/ws')).toBe(true);
-    expect(verifyGatewayNonce('abc', 'ws://127.0.0.1:18789/ws')).toBe(true);
-    expect(verifyGatewayNonce('abc', 'ws://0.0.0.0:18789/ws')).toBe(true);
-    expect(verifyGatewayNonce('abc', 'ws://[::1]:18789/ws')).toBe(true);
+  it("allows loopback gateway URLs", () => {
+    expect(verifyGatewayNonce("abc", "ws://localhost:18789/ws")).toBe(true);
+    expect(verifyGatewayNonce("abc", "ws://127.0.0.1:18789/ws")).toBe(true);
+    expect(verifyGatewayNonce("abc", "ws://0.0.0.0:18789/ws")).toBe(true);
+    expect(verifyGatewayNonce("abc", "ws://[::1]:18789/ws")).toBe(true);
   });
 
-  it('allows undefined gateway URL (no check)', () => {
-    expect(verifyGatewayNonce('abc')).toBe(true);
-    expect(verifyGatewayNonce('abc', undefined)).toBe(true);
+  it("allows undefined gateway URL (no check)", () => {
+    expect(verifyGatewayNonce("abc")).toBe(true);
+    expect(verifyGatewayNonce("abc", undefined)).toBe(true);
   });
 
-  it('allows malformed gateway URL (lets WS connect fail naturally)', () => {
-    expect(verifyGatewayNonce('abc', 'not-a-url')).toBe(true);
+  it("allows malformed gateway URL (lets WS connect fail naturally)", () => {
+    expect(verifyGatewayNonce("abc", "not-a-url")).toBe(true);
   });
 
-  it('rejects non-loopback wss:// gateway URLs', () => {
-    expect(() => verifyGatewayNonce('abc', 'wss://gateway.openclaw.ai/ws')).toThrow(/Non-loopback/);
-    expect(() => verifyGatewayNonce('abc', 'ws://10.0.0.42:18789/ws')).toThrow(/Non-loopback/);
+  it("rejects non-loopback wss:// gateway URLs", () => {
+    expect(() =>
+      verifyGatewayNonce("abc", "wss://gateway.openclaw.ai/ws"),
+    ).toThrow(/Non-loopback/);
+    expect(() => verifyGatewayNonce("abc", "ws://10.0.0.42:18789/ws")).toThrow(
+      /Non-loopback/,
+    );
   });
 
   // --- Policy + retryable error metadata (M4/M5) ---
 
-  it('exposes policy from hello-ok after connect', async () => {
+  it("exposes policy from hello-ok after connect", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     MockWebSocket.instances[0]?.completeHandshake();
@@ -680,60 +1000,80 @@ describe('gateway client', () => {
     expect(client.policy?.maxBufferedBytes).toBe(4_194_304);
   });
 
-  it('surfaces retryable + retryAfterMs on rejected RPC errors', async () => {
+  it("surfaces retryable + retryAfterMs on rejected RPC errors", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
     await connectPromise;
 
-    const callPromise = client.call('status');
+    const callPromise = client.call("status");
     const reqId = JSON.parse(socket.sent.at(-1)!).id;
-    socket.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: reqId,
-      ok: false,
-      error: { code: 'UNAVAILABLE', message: 'startup-sidecars', retryable: true, retryAfterMs: 2000 },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: reqId,
+        ok: false,
+        error: {
+          code: "UNAVAILABLE",
+          message: "startup-sidecars",
+          retryable: true,
+          retryAfterMs: 2000,
+        },
+      }),
+    );
 
     try {
       await callPromise;
-      expect.fail('should have rejected');
+      expect.fail("should have rejected");
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
       expect((err as Error & { retryable?: boolean }).retryable).toBe(true);
-      expect((err as Error & { retryAfterMs?: number }).retryAfterMs).toBe(2000);
+      expect((err as Error & { retryAfterMs?: number }).retryAfterMs).toBe(
+        2000,
+      );
     }
   });
 
-  it('surfaces structured error code + details (MISSING_SCOPE) on rejected RPC errors', async () => {
+  it("surfaces structured error code + details (MISSING_SCOPE) on rejected RPC errors", async () => {
     const client = makeClient();
     const connectPromise = client.connect();
     const socket = MockWebSocket.instances[0]!;
     socket.completeHandshake();
     await connectPromise;
 
-    const callPromise = client.call('audit.activity.list');
+    const callPromise = client.call("audit.activity.list");
     const reqId = JSON.parse(socket.sent.at(-1)!).id;
-    socket.triggerMessage(JSON.stringify({
-      type: 'res',
-      id: reqId,
-      ok: false,
-      error: {
-        code: 'FORBIDDEN',
-        message: 'missing scope: operator.admin',
-        details: { code: 'MISSING_SCOPE', missingScope: 'operator.admin', requiredScopes: ['operator.admin'] },
-      },
-    }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "res",
+        id: reqId,
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "missing scope: operator.admin",
+          details: {
+            code: "MISSING_SCOPE",
+            missingScope: "operator.admin",
+            requiredScopes: ["operator.admin"],
+          },
+        },
+      }),
+    );
 
     try {
       await callPromise;
-      expect.fail('should have rejected');
+      expect.fail("should have rejected");
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
-      expect((err as Error & { code?: string }).code).toBe('FORBIDDEN');
-      const details = (err as Error & { details?: unknown }).details as { code?: string };
-      expect(details?.code).toBe('MISSING_SCOPE');
+      expect((err as Error & { code?: string }).code).toBe("FORBIDDEN");
+      const details = (err as Error & { details?: unknown }).details as {
+        code?: string;
+      };
+      expect(details?.code).toBe("MISSING_SCOPE");
+      expect(
+        (err as Error & { missingScopes?: string[] }).missingScopes,
+      ).toEqual(["operator.admin"]);
     }
   });
 });

@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { GatewayServerService, parseMaxProtocol } from './server-service';
-import { PROTOCOL_VERSION } from './protocol';
+import { describe, expect, it, vi } from "vitest";
+import { GatewayServerService, parseMaxProtocol } from "./server-service";
+import { PROTOCOL_VERSION } from "./protocol";
 
 const HELLO_OK_FIXTURE = {
-  type: 'hello-ok' as const,
+  type: "hello-ok" as const,
   protocol: PROTOCOL_VERSION,
-  server: { version: '2026.4.8', connId: 'conn-1' },
-  features: { methods: ['status'], events: ['tick'] },
+  server: { version: "2026.4.8", connId: "conn-1" },
+  features: { methods: ["status"], events: ["tick"] },
   snapshot: {
     presence: [],
     health: {},
@@ -20,11 +20,14 @@ const HELLO_OK_FIXTURE = {
   },
 };
 
-describe('gateway server service initialization lifecycle', () => {
-  it('allows retry after initial bootstrap failure', async () => {
+describe("gateway server service initialization lifecycle", () => {
+  it("allows retry after initial bootstrap failure", async () => {
     const service = new GatewayServerService() as unknown as {
       initialize: () => Promise<void>;
-      getSnapshot: () => { lastSuccessfulSnapshotAt: string | null; connectionState: string };
+      getSnapshot: () => {
+        lastSuccessfulSnapshotAt: string | null;
+        connectionState: string;
+      };
       client: {
         connect: ReturnType<typeof vi.fn>;
         call: ReturnType<typeof vi.fn>;
@@ -34,17 +37,17 @@ describe('gateway server service initialization lifecycle', () => {
 
     const connect = vi
       .fn<() => Promise<typeof HELLO_OK_FIXTURE>>()
-      .mockRejectedValueOnce(new Error('gateway down'))
+      .mockRejectedValueOnce(new Error("gateway down"))
       .mockResolvedValue(HELLO_OK_FIXTURE);
 
     service.client = {
       connect,
       call: vi.fn().mockResolvedValue(null),
-      connectionState: 'connected',
+      connectionState: "connected",
     };
 
     await service.initialize();
-    expect(service.getSnapshot().connectionState).toBe('error');
+    expect(service.getSnapshot().connectionState).toBe("error");
 
     await service.initialize();
     expect(connect).toHaveBeenCalledTimes(2);
@@ -54,8 +57,9 @@ describe('gateway server service initialization lifecycle', () => {
     expect(connect).toHaveBeenCalledTimes(2);
   });
 
-  it('deduplicates concurrent initialize calls into a single connect attempt', async () => {
-    let resolveConnect: ((value: typeof HELLO_OK_FIXTURE) => void) | null = null;
+  it("deduplicates concurrent initialize calls into a single connect attempt", async () => {
+    let resolveConnect: ((value: typeof HELLO_OK_FIXTURE) => void) | null =
+      null;
     const connectPromise = new Promise<typeof HELLO_OK_FIXTURE>((resolve) => {
       resolveConnect = resolve as (value: typeof HELLO_OK_FIXTURE) => void;
     });
@@ -69,11 +73,13 @@ describe('gateway server service initialization lifecycle', () => {
       };
     };
 
-    const connect = vi.fn<() => Promise<typeof HELLO_OK_FIXTURE>>().mockReturnValue(connectPromise);
+    const connect = vi
+      .fn<() => Promise<typeof HELLO_OK_FIXTURE>>()
+      .mockReturnValue(connectPromise);
     service.client = {
       connect,
       call: vi.fn().mockResolvedValue(null),
-      connectionState: 'connected',
+      connectionState: "connected",
     };
 
     const p1 = service.initialize();
@@ -87,11 +93,20 @@ describe('gateway server service initialization lifecycle', () => {
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
-  it('captures events, sequences them, and trims to max buffer', () => {
+  it("captures events, sequences them, and trims to max buffer", () => {
     const service = new GatewayServerService() as unknown as {
-      getEventsSince: (since: number) => { events: Array<{ seq: number; event: string }>; latestSeq: number };
-      onEvent: (listener: (event: { event: string; seq?: number }) => void) => () => void;
-      pushEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      getEventsSince: (since: number) => {
+        events: Array<{ seq: number; event: string }>;
+        latestSeq: number;
+      };
+      onEvent: (
+        listener: (event: { event: string; seq?: number }) => void,
+      ) => () => void;
+      pushEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
       eventBuffer: Array<{ seq: number; event: string }>;
     };
 
@@ -99,20 +114,20 @@ describe('gateway server service initialization lifecycle', () => {
     const unsubscribe = service.onEvent((event) => seen.push(event.event));
 
     for (let i = 0; i < 520; i += 1) {
-      service.pushEvent({ type: 'event', event: `tick-${i}` });
+      service.pushEvent({ type: "event", event: `tick-${i}` });
     }
 
     const latest = service.getEventsSince(0);
     expect(latest.latestSeq).toBe(520);
     expect(latest.events.length).toBe(500);
-    expect(latest.events[0]?.event).toBe('tick-20');
-    expect(latest.events.at(-1)?.event).toBe('tick-519');
-    expect(seen.at(-1)).toBe('tick-519');
+    expect(latest.events[0]?.event).toBe("tick-20");
+    expect(latest.events.at(-1)?.event).toBe("tick-519");
+    expect(seen.at(-1)).toBe("tick-519");
 
     unsubscribe();
   });
 
-  it('notifies snapshot listeners after successful refresh', async () => {
+  it("notifies snapshot listeners after successful refresh", async () => {
     const service = new GatewayServerService() as unknown as {
       refreshData: () => Promise<void>;
       client: {
@@ -123,7 +138,7 @@ describe('gateway server service initialization lifecycle', () => {
     };
 
     service.client = {
-      connectionState: 'connected',
+      connectionState: "connected",
       call: vi.fn().mockResolvedValue({}),
     };
 
@@ -138,7 +153,7 @@ describe('gateway server service initialization lifecycle', () => {
     unsubscribe();
   });
 
-  it('refreshData skips when disconnected', async () => {
+  it("refreshData skips when disconnected", async () => {
     const service = new GatewayServerService() as unknown as {
       refreshData: () => Promise<void>;
       client: {
@@ -149,7 +164,7 @@ describe('gateway server service initialization lifecycle', () => {
 
     const call = vi.fn().mockResolvedValue({});
     service.client = {
-      connectionState: 'disconnected',
+      connectionState: "disconnected",
       call,
     };
 
@@ -157,7 +172,7 @@ describe('gateway server service initialization lifecycle', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('refreshData skips when another refresh is in flight', async () => {
+  it("refreshData skips when another refresh is in flight", async () => {
     const service = new GatewayServerService() as unknown as {
       refreshData: () => Promise<void>;
       refreshInFlight: boolean;
@@ -169,7 +184,7 @@ describe('gateway server service initialization lifecycle', () => {
 
     const call = vi.fn().mockResolvedValue({});
     service.client = {
-      connectionState: 'connected',
+      connectionState: "connected",
       call,
     };
     service.refreshInFlight = true;
@@ -178,34 +193,156 @@ describe('gateway server service initialization lifecycle', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it('safeNormalize returns undefined for null and thrown normalizers', () => {
+  it("refreshData records scopeHints for FORBIDDEN/MISSING_SCOPE and resets them next cycle", async () => {
     const service = new GatewayServerService() as unknown as {
-      safeNormalize: <T>(label: string, raw: unknown, normalizer: (data: unknown) => T) => T | undefined;
+      refreshData: () => Promise<void>;
+      getSnapshot: () => {
+        scopeHints: Array<{ method: string; missingScopes: string[] }>;
+      };
+      client: {
+        connectionState: string;
+        availableMethods: string[];
+        call: ReturnType<typeof vi.fn>;
+      };
     };
 
-    expect(service.safeNormalize('nullish', null, () => 'x')).toBeUndefined();
-    expect(service.safeNormalize('throws', { a: 1 }, () => {
-      throw new Error('bad shape');
-    })).toBeUndefined();
-    expect(service.safeNormalize('ok', { a: 1 }, () => 'good')).toBe('good');
+    // Every method refreshData() fetches — callIfAvailable gates on this list.
+    const availableMethods = [
+      "status",
+      "agents.list",
+      "sessions.list",
+      "cron.list",
+      "cron.runs",
+      "models.list",
+      "health",
+      "system-presence",
+      "usage.cost",
+      "usage.status",
+      "tools.catalog",
+      "skills.status",
+      "channels.status",
+      "cron.status",
+      "doctor.memory.status",
+      "config.get",
+      "agents.files.list",
+    ];
+
+    const missingScopeError = Object.assign(new Error("missing scope"), {
+      code: "FORBIDDEN",
+      missingScopes: ["operator.admin"],
+    });
+    // Plain FORBIDDEN without missingScopes must NOT produce a hint.
+    const plainForbiddenError = Object.assign(new Error("forbidden"), {
+      code: "FORBIDDEN",
+    });
+
+    const call = vi.fn<(method: string) => Promise<unknown>>();
+    call.mockImplementation((method: string) => {
+      if (method === "config.get") return Promise.reject(missingScopeError);
+      if (method === "status") return Promise.reject(plainForbiddenError);
+      return Promise.resolve({});
+    });
+
+    service.client = {
+      connectionState: "connected",
+      availableMethods,
+      call,
+    };
+
+    await service.refreshData();
+    // Exactly one hint: config.get only — the plain FORBIDDEN on 'status'
+    // carries no missingScopes and is deliberately excluded.
+    expect(service.getSnapshot().scopeHints).toEqual([
+      { method: "config.get", missingScopes: ["operator.admin"] },
+    ]);
+
+    // Scope fixed on the gateway: config.get resolves now. Hints are reset
+    // per refresh — they only describe the current cycle.
+    call.mockImplementation((method: string) => {
+      if (method === "config.get") return Promise.resolve({});
+      if (method === "status") return Promise.reject(plainForbiddenError);
+      return Promise.resolve({});
+    });
+
+    await service.refreshData();
+    expect(service.getSnapshot().scopeHints).toEqual([]);
   });
 
-  it('getEventsSince filters by sequence', () => {
+  it("initialize stores gateway-advertised capabilities in the snapshot", async () => {
     const service = new GatewayServerService() as unknown as {
-      pushEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
-      getEventsSince: (since: number) => { events: Array<{ seq: number; event: string }> };
+      initialize: () => Promise<void>;
+      getSnapshot: () => { gatewayCapabilities: string[] };
+      client: {
+        connect: ReturnType<typeof vi.fn>;
+        call: ReturnType<typeof vi.fn>;
+        connectionState: string;
+      };
     };
 
-    service.pushEvent({ type: 'event', event: 'a' });
-    service.pushEvent({ type: 'event', event: 'b' });
-    service.pushEvent({ type: 'event', event: 'c' });
+    // Clone — do not mutate the shared HELLO_OK_FIXTURE.
+    const helloOk = {
+      ...HELLO_OK_FIXTURE,
+      features: {
+        ...HELLO_OK_FIXTURE.features,
+        capabilities: ["agent-kind", "tool-events"],
+      },
+    };
+
+    service.client = {
+      connect: vi
+        .fn<() => Promise<typeof helloOk>>()
+        .mockResolvedValue(helloOk),
+      call: vi.fn().mockResolvedValue({}),
+      connectionState: "connected",
+    };
+
+    await service.initialize();
+    expect(service.getSnapshot().gatewayCapabilities).toEqual([
+      "agent-kind",
+      "tool-events",
+    ]);
+  });
+
+  it("safeNormalize returns undefined for null and thrown normalizers", () => {
+    const service = new GatewayServerService() as unknown as {
+      safeNormalize: <T>(
+        label: string,
+        raw: unknown,
+        normalizer: (data: unknown) => T,
+      ) => T | undefined;
+    };
+
+    expect(service.safeNormalize("nullish", null, () => "x")).toBeUndefined();
+    expect(
+      service.safeNormalize("throws", { a: 1 }, () => {
+        throw new Error("bad shape");
+      }),
+    ).toBeUndefined();
+    expect(service.safeNormalize("ok", { a: 1 }, () => "good")).toBe("good");
+  });
+
+  it("getEventsSince filters by sequence", () => {
+    const service = new GatewayServerService() as unknown as {
+      pushEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getEventsSince: (since: number) => {
+        events: Array<{ seq: number; event: string }>;
+      };
+    };
+
+    service.pushEvent({ type: "event", event: "a" });
+    service.pushEvent({ type: "event", event: "b" });
+    service.pushEvent({ type: "event", event: "c" });
 
     const filtered = service.getEventsSince(2).events;
     expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.event).toBe('c');
+    expect(filtered[0]?.event).toBe("c");
   });
 
-  it('tracks reconnect and error counters through state transitions', () => {
+  it("tracks reconnect and error counters through state transitions", () => {
     const service = new GatewayServerService() as unknown as {
       client: { stateListeners: Set<(state: string) => void> };
       getSnapshot: () => { reconnectCount: number; errorCount: number };
@@ -216,8 +353,8 @@ describe('gateway server service initialization lifecycle', () => {
     // listener list was empty and the >= 0 assertions were tautological).
     const before = service.getSnapshot();
     for (const listener of service.client.stateListeners) {
-      listener('reconnecting');
-      listener('error');
+      listener("reconnecting");
+      listener("error");
     }
     const after = service.getSnapshot();
     expect(after.reconnectCount).toBe(before.reconnectCount + 1);
@@ -226,102 +363,357 @@ describe('gateway server service initialization lifecycle', () => {
 
   // --- handleGatewayEvent: update.available + shutdown banners ---
 
-  it('handles update.available event and stores it in the snapshot', () => {
+  it("handles update.available event and stores it in the snapshot", () => {
     const service = new GatewayServerService() as unknown as {
-      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
-      getSnapshot: () => { updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null };
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => {
+        updateAvailable: {
+          currentVersion: string;
+          latestVersion: string;
+          channel: string;
+        } | null;
+      };
     };
 
     service.handleGatewayEvent({
-      type: 'event',
-      event: 'update.available',
-      payload: { currentVersion: '2026.6.9', latestVersion: '2026.6.10', channel: 'stable' },
+      type: "event",
+      event: "update.available",
+      payload: {
+        currentVersion: "2026.6.9",
+        latestVersion: "2026.6.10",
+        channel: "stable",
+      },
     });
 
     expect(service.getSnapshot().updateAvailable).toEqual({
-      currentVersion: '2026.6.9',
-      latestVersion: '2026.6.10',
-      channel: 'stable',
+      currentVersion: "2026.6.9",
+      latestVersion: "2026.6.10",
+      channel: "stable",
     });
   });
 
-  it('handles shutdown event and stores it in the snapshot', () => {
+  it("handles shutdown event and stores it in the snapshot", () => {
     const service = new GatewayServerService() as unknown as {
-      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
-      getSnapshot: () => { shutdown: { reason: string; restartExpectedMs?: number } | null };
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => {
+        shutdown: { reason: string; restartExpectedMs?: number } | null;
+      };
     };
 
     service.handleGatewayEvent({
-      type: 'event',
-      event: 'shutdown',
-      payload: { reason: 'restart', restartExpectedMs: 5000 },
+      type: "event",
+      event: "shutdown",
+      payload: { reason: "restart", restartExpectedMs: 5000 },
     });
 
     expect(service.getSnapshot().shutdown).toEqual({
-      reason: 'restart',
+      reason: "restart",
       restartExpectedMs: 5000,
     });
   });
 
-  it('clears shutdown banner on health event', () => {
+  it("clears shutdown banner on health event", () => {
     const service = new GatewayServerService() as unknown as {
-      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
-      getSnapshot: () => { shutdown: { reason: string; restartExpectedMs?: number } | null };
-    };
-
-    service.handleGatewayEvent({ type: 'event', event: 'shutdown', payload: { reason: 'restart' } });
-    expect(service.getSnapshot().shutdown).not.toBeNull();
-
-    service.handleGatewayEvent({ type: 'event', event: 'health', payload: { ok: true } });
-    expect(service.getSnapshot().shutdown).toBeNull();
-  });
-
-  it('handles update.available with missing channel (defaults to stable)', () => {
-    const service = new GatewayServerService() as unknown as {
-      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
-      getSnapshot: () => { updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null };
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => {
+        shutdown: { reason: string; restartExpectedMs?: number } | null;
+      };
     };
 
     service.handleGatewayEvent({
-      type: 'event',
-      event: 'update.available',
-      payload: { currentVersion: '1.0', latestVersion: '2.0' },
+      type: "event",
+      event: "shutdown",
+      payload: { reason: "restart" },
+    });
+    expect(service.getSnapshot().shutdown).not.toBeNull();
+
+    service.handleGatewayEvent({
+      type: "event",
+      event: "health",
+      payload: { ok: true },
+    });
+    expect(service.getSnapshot().shutdown).toBeNull();
+  });
+
+  it("handles update.available with missing channel (defaults to stable)", () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => {
+        updateAvailable: {
+          currentVersion: string;
+          latestVersion: string;
+          channel: string;
+        } | null;
+      };
+    };
+
+    service.handleGatewayEvent({
+      type: "event",
+      event: "update.available",
+      payload: { currentVersion: "1.0", latestVersion: "2.0" },
     });
 
     expect(service.getSnapshot().updateAvailable).toEqual({
-      currentVersion: '1.0',
-      latestVersion: '2.0',
-      channel: 'stable',
+      currentVersion: "1.0",
+      latestVersion: "2.0",
+      channel: "stable",
     });
   });
 
-  it('ignores update.available with missing required fields', () => {
+  it("ignores update.available with missing required fields", () => {
     const service = new GatewayServerService() as unknown as {
-      handleGatewayEvent: (event: { type: 'event'; event: string; payload?: unknown }) => void;
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
       getSnapshot: () => { updateAvailable: unknown };
     };
 
-    service.handleGatewayEvent({ type: 'event', event: 'update.available', payload: { foo: 'bar' } });
+    service.handleGatewayEvent({
+      type: "event",
+      event: "update.available",
+      payload: { foo: "bar" },
+    });
     expect(service.getSnapshot().updateAvailable).toBeNull();
+  });
+
+  // --- Progress cards (agent-scoped, gateway >= 2026.9) ---
+
+  it("fetches progressCard.get with { sessionKey } params when capability + method are advertised", async () => {
+    const service = new GatewayServerService() as unknown as {
+      refreshData: () => Promise<void>;
+      getSnapshot: () => {
+        progressCards: Record<
+          string,
+          {
+            sessionKey: string;
+            title?: string;
+            steps: Array<{ step: string; status: string }>;
+          }
+        >;
+      };
+      client: {
+        connectionState: string;
+        availableMethods: string[];
+        helloOk?: {
+          features: { methods: string[]; capabilities: string[] };
+        };
+        call: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    const advertised = [
+      "status",
+      "agents.list",
+      "sessions.list",
+      "cron.list",
+      "cron.runs",
+      "models.list",
+      "health",
+      "system-presence",
+      "usage.cost",
+      "usage.status",
+      "tools.catalog",
+      "skills.status",
+      "channels.status",
+      "cron.status",
+      "doctor.memory.status",
+      "config.get",
+      "agents.files.list",
+      "progressCard.get",
+    ];
+
+    const call =
+      vi.fn<
+        (method: string, params?: Record<string, unknown>) => Promise<unknown>
+      >();
+    call.mockImplementation((method: string) => {
+      if (method === "sessions.list") {
+        return Promise.resolve({
+          sessions: [
+            { key: "agent:ceo:main", agentId: "ceo", lastActivityAt: 1000 },
+            { key: "agent:ops:main", agentId: "ops", lastActivityAt: 2000 },
+          ],
+        });
+      }
+      if (method === "progressCard.get") {
+        return Promise.resolve({
+          sessionKey: "agent:ceo:main",
+          title: "Migration",
+          steps: [{ step: "fix deps", status: "in_progress" }],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    service.client = {
+      connectionState: "connected",
+      availableMethods: advertised,
+      helloOk: {
+        features: {
+          methods: advertised,
+          capabilities: ["progress-card-agent-scope-v1"],
+        },
+      },
+      call,
+    };
+
+    await service.refreshData();
+
+    // One call per top session key, each carrying its { sessionKey } params.
+    expect(call).toHaveBeenCalledWith("progressCard.get", {
+      sessionKey: "agent:ceo:main",
+    });
+    expect(call).toHaveBeenCalledWith("progressCard.get", {
+      sessionKey: "agent:ops:main",
+    });
+    expect(service.getSnapshot().progressCards["agent:ceo:main"]?.title).toBe(
+      "Migration",
+    );
+  });
+
+  it("does NOT call progressCard.get when the capability is absent", async () => {
+    const service = new GatewayServerService() as unknown as {
+      refreshData: () => Promise<void>;
+      client: {
+        connectionState: string;
+        availableMethods: string[];
+        helloOk?: {
+          features: { methods: string[]; capabilities: string[] };
+        };
+        call: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    // Method advertised but the agent-scope capability is missing → gate holds.
+    const methods = ["status", "sessions.list", "progressCard.get"];
+    const call = vi.fn<(method: string) => Promise<unknown>>();
+    call.mockResolvedValue({});
+
+    service.client = {
+      connectionState: "connected",
+      availableMethods: methods,
+      helloOk: { features: { methods, capabilities: ["agent-kind"] } },
+      call,
+    };
+
+    await service.refreshData();
+    const progressCalls = call.mock.calls.filter(
+      ([method]) => method === "progressCard.get",
+    );
+    expect(progressCalls).toHaveLength(0);
+  });
+
+  // --- activeRunIds snapshot/delta semantics ---
+
+  it("applyActiveRunIdsDelta: array replaces, omission retains, null clears", () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => { activeRunIds: string[] };
+    };
+
+    // Array → replaced.
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { activeRunIds: ["agent:ceo:main", "agent:ops:main", 42] },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([
+      "agent:ceo:main",
+      "agent:ops:main",
+    ]);
+
+    // Field omitted → no change — previous value retained (sessions.changed
+    // fires for reasons unrelated to runs; do not clear).
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { sessions: 3 },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([
+      "agent:ceo:main",
+      "agent:ops:main",
+    ]);
+
+    // Explicit null → no active runs, cleared.
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { activeRunIds: null },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([]);
+
+    // Non-object payload → ignored entirely.
+    service.handleGatewayEvent({ type: "event", event: "sessions.changed" });
+    expect(service.getSnapshot().activeRunIds).toEqual([]);
+  });
+
+  it("progressCard.changed only schedules invalidation — cache untouched by payload", async () => {
+    vi.useFakeTimers();
+    try {
+      const service = new GatewayServerService() as unknown as {
+        handleGatewayEvent: (event: {
+          type: "event";
+          event: string;
+          payload?: unknown;
+        }) => void;
+        getSnapshot: () => {
+          progressCards: Record<string, unknown>;
+        };
+      };
+
+      const before = service.getSnapshot().progressCards;
+      service.handleGatewayEvent({
+        type: "event",
+        event: "progressCard.changed",
+        payload: { sessionKey: "agent:ceo:main", steps: "garbage-shape" },
+      });
+      // Invalidation-only: the event payload must not patch the cache.
+      // (getSnapshot structuredClones, so compare by value, not reference.)
+      expect(service.getSnapshot().progressCards).toEqual(before);
+      expect(service.getSnapshot().progressCards).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
-
-describe('parseMaxProtocol (OPENCLAW_GATEWAY_MAX_PROTOCOL)', () => {
-  it('accepts integers >= 3 (MIN_PROTOCOL_VERSION)', () => {
-    expect(parseMaxProtocol('3')).toBe(3);
-    expect(parseMaxProtocol('4')).toBe(4);
-    expect(parseMaxProtocol('5')).toBe(5);
+describe("parseMaxProtocol (OPENCLAW_GATEWAY_MAX_PROTOCOL)", () => {
+  it("accepts integers >= 3 (MIN_PROTOCOL_VERSION)", () => {
+    expect(parseMaxProtocol("3")).toBe(3);
+    expect(parseMaxProtocol("4")).toBe(4);
+    expect(parseMaxProtocol("5")).toBe(5);
   });
 
-  it('rejects values below the minimum protocol version', () => {
-    expect(parseMaxProtocol('2')).toBeUndefined();
-    expect(parseMaxProtocol('0')).toBeUndefined();
+  it("rejects values below the minimum protocol version", () => {
+    expect(parseMaxProtocol("2")).toBeUndefined();
+    expect(parseMaxProtocol("0")).toBeUndefined();
   });
 
-  it('rejects non-numeric and empty input', () => {
-    expect(parseMaxProtocol('abc')).toBeUndefined();
-    expect(parseMaxProtocol('')).toBeUndefined();
+  it("rejects non-numeric and empty input", () => {
+    expect(parseMaxProtocol("abc")).toBeUndefined();
+    expect(parseMaxProtocol("")).toBeUndefined();
     expect(parseMaxProtocol(undefined)).toBeUndefined();
   });
 });

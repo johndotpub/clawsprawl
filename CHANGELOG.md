@@ -4,6 +4,49 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.42.76 «Recatch»] - 2026-09-14
+
+_OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8/9 protocol surfaces, and automate the dependency pipeline. Version note: per maintainer direction this release continues the 0.42.x baseline lineage (a decrease from 0.44.0); all 0.44.0 content remains included._
+
+### Fixed — Dependency Repair (post mass-merge of 2026-09-14)
+- Repair `npm ci` ERESOLVE on main: `typescript` ^7.0.2 → ^6.0.3 (`@astrojs/check@0.9.10` — latest — peers `^5||^6`; TS7 support lands upstream later). Verified 479/479 tests + clean audits on the fix before the automation work stacked on it.
+- Move the `fast-uri` override off the vulnerable range top: `3.1.5` → `3.1.7` (SSRF/host-confusion advisories GHSA-w27v-family; `ajv` accepts `^3.0.1`).
+- Reconcile stale `allowScripts` (`sharp@0.34.5` → `0.35.4`, matching the merged #90 bump).
+- CI checks that were skipped behind `needs: quality` (e2e, container-build) now always run and report — a skipped check satisfies a required check, which is how the TS7 breakage reached `main` unnoticed.
+- Full-tree (prod+dev) audit demoted from blocking gate to advisory CI job (`dependency-audit`, `continue-on-error`); the required gate is now production-only at `moderate+` (in-suite test + `security.yml`/`publish-gpr.yml`). One transitive dev advisory can no longer wall off every PR.
+- `qa:strict` no longer runs the full-tree audit (it was blocking releases via `publish-gpr.yml`).
+
+### Fixed — Gateway Handshake/Auth (OpenClaw v2026.8.1 contract)
+- Device-proof signatures now use the **gateway-issued `connect.challenge` timestamp** as `signedAt` (falls back to local clock only for pre-challenge servers). Local-clock signatures fail on v2026.8.1+ gateways under clock skew (upstream #116679).
+- Pre-WebSocket handshake failures are classified: HTTP 5xx upgrades / connection-refused reject with `retryable: true` + `code: 'GATEWAY_UNAVAILABLE'`; 4xx auth/misconfig stays non-retryable (upstream #141451).
+- Non-string WebSocket frames (compression/binary) are counted (`client.nonStringFrameCount`) and warn once instead of being silently dropped (upstream #136862).
+- Documented the v2026.8.1 reconnect event-sequence baseline reset (upstream #116043) — this client implements no seq-gap recovery, so no baseline reset is needed; guard comment added.
+
+### Added — Capability Registry & Graceful Degradation
+- `src/lib/gateway/capabilities.ts`: typed capability helpers (`hasCapability`, `advertisedMethods`, `hasMethod`) over the hello-ok feature surface.
+- Dashboard advertises `agent-kind`, `tool-events`, `session-scoped-events`, `usage-refreshing` (all honestly implemented; approval/ui-command surfaces deliberately not claimed — read-only dashboard).
+- `callIfAvailable`/`canCall`: every RPC gates on the gateway-advertised method surface; absent methods yield null (absent panel data) instead of per-refresh error logs.
+- Structured `FORBIDDEN`/`MISSING_SCOPE` rejections captured as per-method `scopeHints` on the snapshot (reset per refresh cycle) so panels can render "requires scope X" hints.
+- `gatewayCapabilities` exposed through the snapshot; the public view stays blind to capability/scope metadata.
+
+### Added — Progress Cards & Active Runs (OpenClaw 2026.9)
+- `progressCard.get` (capability-gated on `progress-card-agent-scope-v1`) for the top-20 most-recently-active sessions, keyed by sessionKey.
+- `progressCard.changed` handled as invalidation-only (payload shapes vary across gateway builds; the next refresh pulls the authoritative card).
+- `activeRunIds` snapshot/delta semantics from `sessions.changed`: omission retains, explicit null clears, arrays replace (non-strings filtered).
+- `renderProgressCardRows`: title, text progress bar, in-progress step, `● live` marker for active sessions; private-only "⏳ Agent Progress" panel.
+
+### Added — Seven Read-Only Fleet Panels
+- Task Ledger (`tasks.list`), Usage Timeseries (`sessions.usage.timeseries`), Node Fleet (`node.list`), Gateway Stability (`diagnostics.stability`), Audit Timeline (`audit.activity.list`), Config Schema (`config.schema`), Skill Proposals (`skills.proposals.list`).
+- All method-gated via `callIfAvailable`, tolerant normalizers (bare-array or object-wrapped payloads, malformed-entry skipping), public view redacts all seven.
+
+### Changed — Dependency Automation
+- `.github/dependabot.yml`: groups restricted to minor/patch (majors open as individual human-reviewed PRs), peer-coupled toolchain (`typescript`, `astro`, `vitest`, `@vitest/*`) excluded from grouping, `rebase-strategy: auto`, staggered schedules (npm Mon / actions Tue / docker Wed), labels + commit-message prefixes.
+- New `.github/workflows/dependabot-auto-merge.yml`: auto-approve + auto-merge for Dependabot minor/patch PRs, gated on the dependabot actor + minor/patch-only + toolchain denylist; `--merge` (ruleset allows merge/rebase only). Hard prerequisites documented in the workflow (owner settings: `allow_auto_merge`, required status checks).
+- Node toolchain aligned with the gateway floor: `.nvmrc` 26.8.2, `engines.node >=26.1.0` (OpenClaw v2026.9.3+ requires Node 24.16+/26.1+; older builds risk SQLite truncation). Dockerfile unchanged — the pinned chainguard digest already ships 26.8.2.
+
+### Verified
+- 459+ unit tests, lint, `qa:strict` (typecheck + coverage + docs + build), prod audit clean — per commit.
+
 ## [0.44.0 «Uplink»] - 2026-08-02
 
 _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and an OpenClaw v2026.6/7 protocol-robustness catch-up._
@@ -31,6 +74,7 @@ _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sw
 - Surface an actionable bootstrap hint when the gateway requires a paired device (CONTROL_UI_DEVICE_IDENTITY_REQUIRED) or returns MISSING_SCOPE without a configured device.
 - Fix `docs:screenshots`: it set `CLAWSPRAWL_MODE=token` (which the spec skips — it only captures in `public`/`insecure`) and hardcoded the scope-less `backend` identity. It now runs both `public` and `insecure` passes and inherits the device-paired client identity from the environment.
 - Refresh the four docs screenshots against a live OpenClaw 2026.7.2-beta.7 gateway (5 agents, 14 models).
+- Re-capture all four docs screenshots against a live **OpenClaw 2026.9.4** gateway: private-unlocked view now shows the new Phase 3 panels (Task Ledger, Agent Progress, Usage Trend, Activity Summary, Skills Approvals, Process Monitor) with live fleet data; public-locked view verified to keep the new task/audit/config/skill surfaces redacted.
 
 ### Changed — Docs
 - Update README Astro badge (6.x → 7.x), architecture-overview protocol label (v3 → v4), the OpenClaw capability audit (newly-stable + removed/renamed methods, protocol v5 tracking), and the heredoc API/sourcecode method list.

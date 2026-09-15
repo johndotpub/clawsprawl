@@ -9,19 +9,19 @@
  * The 7-state machine governs valid transitions (see state-machine.ts).
  */
 export type ConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'handshaking'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'error';
+  | "idle"
+  | "connecting"
+  | "handshaking"
+  | "connected"
+  | "reconnecting"
+  | "disconnected"
+  | "error";
 
 // --- Wire frame types ---
 
 /** Client → gateway request frame. */
 export interface RequestFrame {
-  type: 'req';
+  type: "req";
   id: string;
   method: string;
   params?: unknown;
@@ -29,7 +29,7 @@ export interface RequestFrame {
 
 /** Gateway → client response frame. */
 export interface ResponseFrame {
-  type: 'res';
+  type: "res";
   id: string;
   ok: boolean;
   payload?: unknown;
@@ -38,7 +38,7 @@ export interface ResponseFrame {
 
 /** Gateway → client (or broadcast) event frame. */
 export interface EventFrame {
-  type: 'event';
+  type: "event";
   event: string;
   payload?: unknown;
   seq?: number;
@@ -127,6 +127,8 @@ export interface HelloOkServer {
 export interface HelloOkFeatures {
   methods: string[];
   events: string[];
+  /** Client-capability registry entries the gateway honors (optional on older gateways). */
+  capabilities?: string[];
 }
 
 /** Connection policy limits from the HelloOk handshake response. */
@@ -173,7 +175,7 @@ export interface Snapshot {
   configPath?: string;
   stateDir?: string;
   sessionDefaults?: SessionDefaults;
-  authMode?: 'none' | 'token' | 'password' | 'trusted-proxy';
+  authMode?: "none" | "token" | "password" | "trusted-proxy";
   updateAvailable?: {
     currentVersion: string;
     latestVersion: string;
@@ -198,7 +200,7 @@ export interface HelloOkAuth {
 
 /** Successful handshake response from the gateway (protocol, server, features, snapshot). */
 export interface HelloOk {
-  type: 'hello-ok';
+  type: "hello-ok";
   protocol: number;
   server: HelloOkServer;
   features: HelloOkFeatures;
@@ -424,7 +426,7 @@ export interface GatewayClientOptions {
    * Typically set to the gateway's own HTTP base URL (e.g. `http://127.0.0.1:18789`).
    * Ignored in browser environments where the browser sets Origin automatically.
    */
-   origin?: string;
+  origin?: string;
   /** Device ID for v4 device identity (enables non-loopback gateway support). */
   deviceId?: string;
   /** Device Ed25519 public key (PEM format) for v4 nonce signing. */
@@ -564,13 +566,16 @@ export interface ChannelsStatusResponse {
   ts: number;
   channelOrder: string[];
   channelLabels: Record<string, string>;
-  channels: Record<string, {
-    configured: boolean;
-    running: boolean;
-    lastStartAt: number | null;
-    lastStopAt: number | null;
-    lastError: string | null;
-  }>;
+  channels: Record<
+    string,
+    {
+      configured: boolean;
+      running: boolean;
+      lastStartAt: number | null;
+      lastStopAt: number | null;
+      lastError: string | null;
+    }
+  >;
   channelAccounts: Record<string, ChannelAccountDetail[]>;
 }
 
@@ -607,6 +612,31 @@ export interface MemoryStatusResponse {
     promotedToday: number;
     [key: string]: unknown;
   };
+}
+
+/** Normalized progress card from `progressCard.get` (agent-scoped, gateway ≥ 2026.9).
+ *
+ * The gateway publishes one card per session (addressable by `sessionKey`, plus
+ * `agentId` under agent-scope) with at most 50 steps and at most one step
+ * `in_progress` at a time. Events: `progressCard.changed`.
+ *
+ * Tolerant by design: only `steps` is guaranteed — everything else is optional
+ * so an older/gateway-variant payload still normalizes.
+ */
+export interface ProgressCard {
+  /** Session key the card belongs to (e.g. `agent:ceo:main`). */
+  sessionKey: string;
+  /** Owning agent id when the gateway advertises agent-scoped cards. */
+  agentId?: string;
+  /** Human-readable card title. */
+  title?: string;
+  /** Step list — max 50 entries, at most one `in_progress` at a time. */
+  steps: Array<{
+    step: string;
+    status: "pending" | "in_progress" | "completed";
+  }>;
+  /** ISO timestamp of the last card update. */
+  updatedAt?: string;
 }
 
 // --- RPC response types (panels with working RPC data sources) ---
@@ -649,6 +679,120 @@ export interface SessionDetailEntry {
   lastActivityAt?: number;
   /** Epoch-ms of session creation. */
   createdAt?: number;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+// --- Phase 3 RPC response types (read-only dashboard panels, OpenClaw 2026.9) ---
+
+// All types below are tolerant/optional-heavy like {@link ProgressCard}: only the
+// field the panel renderer cannot function without is guaranteed; everything
+// else is optional so gateway-variant payloads still normalize.
+
+/** Task ledger entry from `tasks.list` RPC. */
+export interface TaskLedgerEntry {
+  /** Task id — falls back to `name`/`title`/index-derived when absent. */
+  id: string;
+  /** Human-readable task name. */
+  name?: string;
+  /** Human-readable task title (alternate to `name`). */
+  title?: string;
+  /** Enum-ish lifecycle status; unrecognized values default to `unknown`. */
+  status: string;
+  /** Task priority when the gateway sends a string. */
+  priority?: string;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** One usage/cost timeseries bucket from `sessions.usage.timeseries` RPC. */
+export interface UsageTimeseriesEntry {
+  /** Bucket label (timestamp or date string). */
+  ts: string;
+  /** Token total for the bucket. */
+  tokens?: number;
+  /** Cost (USD) for the bucket. */
+  cost?: number;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** Node fleet entry from `node.list` RPC. */
+export interface NodeFleetEntry {
+  /** Node id — falls back to `name`/index-derived when absent. */
+  nodeId: string;
+  /** Human-readable node name. */
+  name?: string;
+  /** Node platform string. */
+  platform?: string;
+  /** Node agent version. */
+  version?: string;
+  /** Whether the node is currently connected. */
+  connected?: boolean;
+  /** Epoch-ms of last known presence. */
+  lastSeenAtMs?: number;
+  /** Host stats when the gateway advertises them. */
+  hostStats?: {
+    cpuCount?: number;
+    memoryTotalBytes?: number;
+    memoryFreeBytes?: number;
+  };
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** Gateway stability/lane event from `diagnostics.stability` RPC. */
+export interface StabilityEntry {
+  /** Bucket label (timestamp or sequence string). */
+  ts: string;
+  /** Event kind/type/name. */
+  kind: string;
+  /** Human-readable summary/message. */
+  summary?: string;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** Audit timeline entry from `audit.activity.list` RPC. */
+export interface AuditTimelineEntry {
+  /** Entry timestamp label. */
+  ts: string;
+  /** Acting principal (actor or agentId). */
+  actor?: string;
+  /** Action/kind performed. */
+  action: string;
+  /** Target or summary of the action. */
+  target?: string;
+  /** Outcome — rendered as an ok/error badge when present. */
+  outcome?: string;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** Config schema entry from `config.schema` RPC (keyed by config key). */
+export interface ConfigSchemaEntry {
+  /** Schema type of the value. */
+  type?: string;
+  /** Human-readable description. */
+  description?: string;
+  /** Default value (shape varies — passed through untouched). */
+  default?: unknown;
+  /** Config path the key maps to. */
+  path?: string;
+  /** Extra fields from gateway. */
+  [key: string]: unknown;
+}
+
+/** Skill proposal entry from `skills.proposals.list` RPC. */
+export interface SkillProposalEntry {
+  /** Proposal id/name. */
+  id: string;
+  /** Queue status; unrecognized values default to `unknown`. */
+  status: "pending" | "approved" | "rejected" | "unknown";
+  /** Proposing author. */
+  author?: string;
+  /** Security verdict (from `securityVerdicts` or inline `verdict`). */
+  verdict?: string;
   /** Extra fields from gateway. */
   [key: string]: unknown;
 }

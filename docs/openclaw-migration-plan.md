@@ -1,0 +1,282 @@
+# OpenClaw 2026.7–2026.9 Migration Plan for ClawSprawl
+
+**Prepared:** 2026-09-14 · **For:** ClawSprawl v0.44.0 (`~/null-arbitrage/clawsprawl`, post-PR-#93 main `bffea27`)
+**Against:** OpenClaw 2026.9.4 (2026.9.x line) — the live gateway
+**Status:** PLAN — not yet executed. Each phase is independently shippable.
+**Research basis:** four sourced reports in [`docs/research/`](research/) —
+[changelog](research/oc-changelog-60d.md) (20 releases, 35 breaking changes, every item cited),
+[features/docs](research/oc-features-docs.md) (48KB, official-docs-sourced),
+[api surface](research/clawsprawl-api-surface.md) (exhaustive inventory with file:line refs),
+[project analysis](research/clawsprawl-project-analysis.md) (health, gaps, opportunities).
+
+---
+
+## 0. Executive summary
+
+ClawSprawl's last real OpenClaw-integration work was **2026-08-01/02** ("catch up to OpenClaw
+v2026.6/7"). Since then OpenClaw shipped **v2026.8.1 ("2.0"), 8.2, 9.1, 9.2, 9.3, 9.4** with
+**35 breaking changes** in-window, several touching the exact surfaces ClawSprawl depends on.
+ClawSprawl currently consumes **17 of 200+** gateway RPC methods. It is functionally compatible
+today but built on assumptions that 2026.8/9 changed.
+
+**Bottom line, three tiers:**
+
+1. **Tier 1 — Do now (compatibility):** protocol/version negotiation hardening, handshake/auth
+   contract updates, reconnect-baseline reset, event-name coverage, and a device-identity
+   bootstrap so the dashboard actually works against the live gateway. Low risk, high value.
+2. **Tier 2 — Do next (adoption of new protocol surfaces):** progress cards, session dashboards
+   (board protocol), client capability registry, structured scope errors, health endpoints.
+3. **Tier 3 — Feature backlog (fleet value):** task ledger, usage timeseries, node fleet,
+   stability, audit timeline, schema explorer, plus adoption of new gateway panels (portals,
+   public transcripts, web push).
+
+There is **no emergency**: the gateway is still protocol v4 (v5 unreleased), `connect.challenge`
+→ v3 signature flow ClawSprawl implements is still the current contract, and no consumed RPC has
+been renamed. The risk is *drift*, not outage — but Tier 1 items close every documented gap
+before the next gateway release lands on a Friday.
+
+---
+
+## 1. What changed in OpenClaw in the window (curated, dashboard-relevant)
+
+Full detail with citations in `docs/research/oc-changelog-60d.md` (35 breaking changes B1–B35,
+protocol changes P1–P20). The items that touch ClawSprawl specifically:
+
+### 1.1 Breaking changes that hit ClawSprawl surfaces
+
+| # | Version | Change | ClawSprawl impact | Severity |
+|---|---|---|---|---|
+| BC-1 | 2026.8.1 (#116043) | **Reconnect event-sequence baseline resets per replacement WebSocket** — the shared client now resets its outer event-seq baseline on every reconnect. | `client.ts` tracks `seq` continuity across reconnects; if it assumes baseline continuity across socket generations, gap recovery will mis-compare and drop or duplicate events. | HIGH |
+| BC-2 | 2026.8.1 (#116679) | **Device-proof signing must use the Gateway-issued challenge timestamp** (not local clock) in the v3 signature payload. | `protocol.ts:135-156` builds the v3 payload with `signedAtMs` — must verify it uses `connect.challenge.ts` (the gateway's ts, not `Date.now()`). If it uses local time against 2026.8.1+ gateways, auth fails under clock skew. | HIGH |
+| BC-3 | 2026.9.3 (#140672) | **Node 24.16+/26.1+ required** for the *gateway*. | ClawSprawl is a separate app (Node 22.13.0 via `.nvmrc`), but deployment co-hosted with the gateway on the same host should match the new floor to avoid two Node versions + SQLite behavior mismatch. | MED |
+| BC-4 | 2026.9.3 (#140903) | **Prometheus `/metrics` now requires operator read.** | Docs runbook mentions gateway `/metrics` but code doesn't consume it. If ops tooling scrapes it unauthenticated, that breaks. | LOW |
+| BC-5 | 2026.8.2→9.2 (#133469/#136755) | **Session visibility default widened to all-session.** | `sessions.list` results will include more sessions than before for the operator identity. Public/private redaction logic (`public-private.ts`) must be re-verified against a live gateway with real data — the public allowlist is a security boundary. | HIGH |
+| BC-6 | 2026.9.3 (#141045) | **Live activity semantics changed** — running/queued sessions shown distinctly, no more "idle" for disconnected. | If the dashboard infers agent state from `status` shape assumptions, refresh normalizers. | MED |
+| BC-7 | 2026.9.2 (#136862) | **WS payload compression on chat-startup** payloads. | `client.ts` `onmessage` ignores non-string frames (binary). If the gateway starts sending compressed frames on the operator socket, ClawSprawl's string-only parser would silently drop them. Verify no compression on the operator path, or handle it. | MED |
+| BC-8 | 2026.9.3 (#141511/#141514) | **Gateway secret/token onboarding changed** — one secret field, local token generated by default. | Deployment docs (`docs/deployment-guide.md`, `operations-runbook.md`) reference token setup flows that changed. Doc update + verify `OPENCLAW_GATEWAY_TOKEN` flow unchanged at the WS level. | LOW |
+| BC-9 | 2026.9.4 (#141451) | **Service-unavailable responses on pre-WS handshake failure.** | `client.ts` must treat non-101 HTTP upgrade responses as retryable with backoff, not fatal. | LOW |
+| BC-10 | 2026.9.3 (structured scope errors) | **Missing-scope errors now structured** (`FORBIDDEN` + `details.code: MISSING_SCOPE` + `requiredScopes`; HTTP 403). | ClawSprawl already surfaces `err.code`/`err.details`; add explicit `MISSING_SCOPE` hint rendering to guide operators to fix scopes instead of a blank panel. | LOW |
+
+### 1.2 Protocol surfaces ClawSprawl must stay ahead of
+
+- **Wire protocol v5 is coming** and is a documented hard break for v4-only clients. ClawSprawl
+  negotiates `minProtocol: 3, maxProtocol: 4` today with the `OPENCLAW_GATEWAY_MAX_PROTOCOL`
+  escape hatch (`server-service.ts:211`). v5 is **not yet released** (gateway `PROTOCOL_VERSION = 4`
+  confirmed in the installed build) — this is a *watch item*, not work to do now.
+- **`connect.challenge` → v3 device signature** is still the current contract (no-challenge
+  compatibility exists only for pre-challenge servers, which are irrelevant here).
+- **Removed/renamed surfaces** ClawSprawl doesn't currently use (so safe), but its docs still
+  mention: `sessions.observer.ask` → `sessions.companion.ask`; `execSecurity`/`execAsk` →
+  `permissionMode`; canvas `canvasHostUrl` → `pluginSurfaceUrls`; `channels.webchat` /
+  `gateway.webchat` retired; `extensions/workspaces` deleted. ClawSprawl consumes none of these —
+  confirm in docs cleanup.
+
+### 1.3 New capabilities worth adopting (confirmed in official docs)
+
+Full catalogue in `docs/research/oc-features-docs.md` §1. Highest-value for a fleet dashboard:
+
+1. **Progress cards** (`progressCard.get/put` + `progressCard.changed`; capability
+   `progress-card-agent-scope-v1`) — durable per-session plan/status; maps directly to ClawSprawl's
+   per-agent panels.
+2. **Session dashboards** (`board.get/update`, `board.widget.put`, `board.changed`,
+   `board.command`) — session-owned widget boards; native `session:report` widgets need no iframe.
+3. **Client capability registry** — `caps` beyond `agent-kind`: `tool-events`, `inline-widgets`,
+   `ui-commands`, `usage-refreshing`, `approvals`, `exec-approvals`, `session-scoped-events`.
+4. **Health/readiness endpoints** — `/health`, `/healthz`, `/startup(z)`, `/ready(z)`
+   (unauthenticated GET/HEAD) — compose with ClawSprawl's own health surface.
+5. **Portals** (`/portals`), **public transcripts** (`/share/session?token=`), **web push**
+   (`push.web.*`), **mentions** (`mentions.*`) — new public-facing surfaces.
+6. **Observer digests + activeRunIds** (`session.observer` headlines, `activeRunIds` snapshot/delta
+   matrix, `sessions.companion.*`) — correct way to drive live run indicators.
+
+---
+
+## 2. Current ClawSprawl state (what we're migrating from)
+
+Condensed from `docs/research/clawsprawl-api-surface.md` (exhaustive, file:line-cited):
+
+- **Architecture:** Astro 7 SSR holds the single server-side WS operator connection to the gateway;
+  browsers consume ClawSprawl's own `/api/*` routes; the gateway token never reaches browsers.
+  **Zero direct gateway HTTP calls** — `OPENCLAW_GATEWAY_HTTP_URL` is only the WS `Origin` header.
+- **Consumed RPCs (17):** `status`, `agents.list`, `sessions.list`, `cron.list/runs/status`,
+  `models.list`, `health`, `system-presence`, `usage.cost`, `usage.status`, `tools.catalog`,
+  `skills.status`, `channels.status`, `doctor.memory.status`, `config.get`, `agents.files.list`.
+- **Events: 37 distinct names/patterns** bucketed in `EVENT_BUCKET_TABLE`; unknown events land in
+  `other` without crashing (good forward-compat posture).
+- **Auth:** token + Ed25519 device identity + `caps: ['agent-kind']`, role `operator`, default
+  scope `operator.read`, loopback-only WS. `MISSING_SCOPE` surfaced via error details.
+- **Test health:** 479/479 unit tests, 94% line coverage, prod-audit enforced in-suite, e2e
+  homepage/theme always, live-gateway suite opt-in only (`E2E_LIVE_GATEWAY=1`).
+
+**Critical operational finding:** the local `.env` has **zero** `CLAWSPRAWL_DEVICE_*` keys — the
+dashboard would render empty against the live 2026.9.4 gateway today. This is fixable in one
+command (`npm run setup:device`) plus a gateway-side approval.
+
+---
+
+## 3. Migration plan
+
+### Tier 1 — Compatibility (do now; est. 1–2 sessions)
+
+All items are low-risk, verified against the research. Target: one PR per group.
+
+#### T1.1 Device identity bootstrap (operational blocker)
+- [ ] Run `npm run setup:device` in `~/null-arbitrage/clawsprawl` to generate the Ed25519 device identity.
+- [ ] Approve the device on the gateway: `openclaw devices approve <id>` (owner action on lorica).
+- [ ] Populate `.env` with `CLAWSPRAWL_DEVICE_{ID,PUBLIC_KEY,PRIVATE_KEY,TOKEN}`.
+- [ ] **Verify:** `E2E_LIVE_GATEWAY=1 npm run test:e2e` — all 7 live tests pass; private panels populated.
+- **Why first:** every other phase needs a live, authenticated connection to develop against.
+
+#### T1.2 Handshake/auth contract hardening
+- [ ] **BC-2 (challenge timestamp):** audit `buildDeviceAuthPayloadV3()` (`protocol.ts:135-156`) and
+  `signChallenge()` — confirm `signedAtMs` comes from `connect.challenge.ts`, not `Date.now()`.
+  Add a regression test: challenge ts ≠ local clock ⇒ signature must use challenge ts.
+- [ ] **BC-1 (reconnect baseline):** audit `client.ts` reconnect path — event-seq baseline must reset
+  per replacement WebSocket. Add test: connect (seq 1..N) → disconnect → reconnect (seq restarts) ⇒
+  no phantom gaps. Cross-check against the shared TS client behavior (#116043).
+- [ ] **BC-9 (pre-WS handshake failure):** handle non-101 upgrade responses as retryable backoff,
+  not fatal error. Test: gateway returns 503 before upgrade ⇒ client retries, no crash.
+- [ ] **BC-7 (WS compression):** add a guard in `client.ts` `onmessage`: if the gateway ever sends
+  non-string frames, log loudly + attempt `JSON.parse` of decompressed buffer if feasible; at minimum
+  fail visibly, not silently. Verify against live gateway whether the operator socket compresses.
+- **Verification:** full unit suite + live e2e; no regressions; new tests for all four behaviors.
+
+#### T1.3 Public/private redaction re-verification (security boundary)
+- [ ] **BC-5 (visibility widening):** against the live gateway (after T1.1), confirm `sessions.list`
+  returns the widened set and that `public-private.ts` still redacts everything private: sessions
+  `[]`, presence `[]`, `configData: null`, token never leaves the server.
+- [ ] Add e2e assertions that the public snapshot stays empty even with many visible private sessions.
+- **Why:** visibility defaults widened *by default* in 2026.8.2/9.2; the public allowlist is the
+  security boundary — verify, don't assume.
+
+#### T1.4 Docs + roadmap refresh
+- [ ] Update `docs/technical-design-plan.md`: capability audit from v2026.6/7 → 2026.9.4; tick
+  Epic F sub-items that are now done; retire mentions of removed surfaces
+  (`sessions.observer.ask`, `execSecurity`, canvas `canvasHostUrl`, `channels.webchat`,
+  `extensions/workspaces`).
+- [ ] Update the "v0.42.0 Active Roadmap" heading drift; note the TS ^6.0.3 pin and its upstream
+  release condition (`@astrojs/check` TS7 peer support).
+- [ ] Deployment/runbook: note gateway Node 24.16+/26.1+ floor (BC-3) and token onboarding change (BC-8).
+- [ ] Fix `client.test.ts:589` "stub" label — the nonce enforcement is real now.
+
+### Tier 2 — Protocol adoption (do next; est. 2–4 sessions)
+
+#### T2.1 Client capability registry expansion
+- [ ] Beyond `caps: ['agent-kind']`, advertise what ClawSprawl can honestly support:
+  - `tool-events` — if rendering `session.tool` payloads live (it buckets them today)
+  - `session-scoped-events` — if subscribing per-session
+  - `usage-refreshing` — if usage panels refetch on event
+  - `approvals` / `exec-approvals` — only if adding approval actions (Tier 3; read-only display first)
+- [ ] Parse `hello.features.capabilities` and gate rendering on advertised capability (no blind sends).
+- [ ] Verify no handshake error when omitting capabilities the gateway expects.
+
+#### T2.2 Structured error handling (`FORBIDDEN`/`MISSING_SCOPE`)
+- [ ] Map `err.details.code === 'MISSING_SCOPE'` + `requiredScopes` to a panel hint
+  ("panel unavailable — gateway scope `X` missing; fix with `OPENCLAW_GATEWAY_SCOPES`").
+- [ ] HTTP 403 mirror handling if any surface ever goes HTTP.
+
+#### T2.3 Health/readiness composition
+- [ ] Consume gateway `/health`, `/healthz`, `/startupz`, `/readyz` in the ops runbook and
+  optionally surface gateway readiness in the dashboard's connection banner.
+- [ ] Keep ClawSprawl's own `/api/private/health.json` as the authoritative self-report.
+
+#### T2.4 Progress cards (highest-value new surface)
+- [ ] Add `progressCard.get` to the refresh set (gated on `progress-card-agent-scope-v1` capability).
+- [ ] Subscribe to `progressCard.changed`; render per-agent current task/plan card in the private view.
+- [ ] Add normalizer + renderer + unit tests; verify payload shape against live gateway.
+
+#### T2.5 Session dashboards / board protocol (evaluative)
+- [ ] Spike: render a session's `board.get` tabs/widgets read-only.
+- [ ] Evaluate native `session:report` widget rendering (metrics/tables/charts/links, no iframe).
+- [ ] Decide adopt vs defer based on Control UI overlap — if Control UI already renders boards,
+  ClawSprawl may add more value on fleet-wide aggregation (Tier 3) than duplicating per-session boards.
+
+#### T2.6 Observer digests + activeRunIds
+- [ ] Replace inferred run state with `activeRunIds` snapshot/delta matrix handling
+  (omission vs `null` vs array — semantics documented).
+- [ ] Surface `session.observer` headlines in the activity feed.
+- [ ] Evaluate `sessions.companion.*` for a future side-chat surface (defer unless requested).
+
+### Tier 3 — Feature backlog (fleet value; prioritized)
+
+Prioritized from `docs/research/clawsprawl-project-analysis.md` §5.2 (F1–F22 there), curated:
+
+| Priority | Feature | Gateway surface | Why |
+|---|---|---|---|
+| **P1** | **Task Ledger panel** | `tasks.list/get/history` (+`dismiss/retry` later) | Largest gap: `status.tasks` shows "4 active · 33 issues · 374 tracked" but resolves only counts. Operational board for a fleet. |
+| **P1** | **Session Usage & Cost Timeseries** | `sessions.usage`, `.timeseries`, `.logs` | Dashboard already renders cost totals; timeseries gives per-agent spend attribution — the actual decision input. |
+| **P2** | **Node Fleet panel** | `node.list/describe/pair.list`, events `node.presence*`, `node.hostStats` | Turns single-gateway view into fleet view; makes the family's multi-host topology visible. |
+| **P2** | **Gateway Stability panel** | `diagnostics.stability`, `diagnostics.lanes` | Bounded incident triage feed; complements the event ring buffer. |
+| **P2** | **Audit Activity timeline** | `audit.activity.list`, `audit.list` | Durable "who did what" ledger for autonomous operations. |
+| **P3** | **Config Schema Explorer** | `config.schema`, `config.schema.lookup` | Current private config panel filters `config.get` to a 24-key allowlist — nearly useless. Read-only schema browser is safe and informative. |
+| **P3** | **Skill Proposal review queue** | `skills.proposals.list/inspect`, `skills.securityVerdicts`, `skills.curator.status` | High leverage for a fleet authoring skills. |
+| **P3** | **Public fleet pulse widget** | reuses `status` + `health` + `channels.status` | Embeddable public-safe summary; all data already public-allowlisted. |
+| Later | Session catalog/branching, groups, workspace browser, artifacts, TTS/voice, heartbeat, channel pairing, canvas/A2UI, goals ⚠️, workboard ⚠️, memory/wiki ⚠️ | see research §5.2 F9–F21 | ⚠️ = needs payload verification before committing |
+
+**Deliberately out of scope (read-only non-goal):** `logs.tail`, `gateway.identity.get` (deferred
+by design), all mutable/admin RPC families (`sessions.dispatch`, `terminal.*` PTY, `ui.command`,
+`gateway.restart.*`, `gateway.suspend.*`, `environments.*`). Revisit only with an explicit
+decision to make ClawSprawl an operations console, not just a dashboard.
+
+### Tier 4 — Continuous: tracking the gateway
+
+- [ ] **Protocol v5 watch:** when OpenClaw ships v5, raise `OPENCLAW_GATEWAY_MAX_PROTOCOL` in a
+  canary deployment first; expect a hard break for v4-only operator clients.
+- [ ] **Version pinning:** consider pinning a tested gateway-version baseline in
+  `docs/technical-design-plan.md` and re-running the capability audit per gateway minor release.
+- [ ] **Live-gateway e2e in CI:** add a scheduled (weekly) CI job running `E2E_LIVE_GATEWAY=1`
+  against a pinned gateway version, so integration drift is caught automatically. (Ties into the
+  automation work: this could be its own workflow file, required-check-free but reported.)
+
+---
+
+## 4. Execution order & effort
+
+```
+T1.1 device identity (30 min + owner approve)     ← unblocks live development
+T1.2 handshake/auth hardening (2–3 h)
+T1.3 redaction re-verification (1 h, needs T1.1)
+T1.4 docs refresh (1 h)
+── Tier 1 ships as 1–2 PRs, all green, no behavior change except fixes ──
+T2.1 caps registry (1–2 h)
+T2.2 structured errors (1 h)
+T2.3 health endpoints (1 h)
+T2.4 progress cards (2–4 h, needs T1.1)
+T2.5 boards spike (2 h evaluative)
+T2.6 observer/activeRunIds (2–3 h)
+── Tier 2 ships as 2–3 PRs ──
+Tier 3 features: each panel 2–6 h (P1 items first)
+Tier 4: ongoing watch + weekly live-e2e CI job
+```
+
+## 5. Risks & open questions
+
+| Risk | Mitigation |
+|---|---|
+| Protocol v5 lands mid-Tier-2/3 | Tier 4 watch; `OPENCLAW_GATEWAY_MAX_PROTOCOL` escape hatch ready; canary first |
+| `hello.features.capabilities` shape differs from docs | Verify live in T2.1 before coding against it |
+| Progress-card payload shape differs from docs | Normalizer-first pattern (existing repo convention) handles drift; verify live in T2.4 |
+| Board protocol churn (plugin APIs experimental) | T2.5 is evaluative; decide adopt/defer after spike |
+| Session visibility widening changes public view | T1.3 verifies redaction boundary explicitly |
+| Node floor (BC-3) on co-hosted deployments | Ops doc update in T1.4 |
+
+**Open questions for Panoply:**
+1. **T2.5 boards:** duplicate Control UI functionality or differentiate on fleet aggregation?
+2. **Tier 3 scope:** dashboard-only (read-only) or evolve toward an ops console with approvals/actions?
+3. **Public fleet pulse widget:** wanted? (Public-safe, but it's a new public surface.)
+
+## 6. Verification gates (apply to every phase)
+
+- `npm run qa:strict` green; 479+ unit tests pass
+- New behavior covered by new unit tests (repo convention: normalizer + renderer + adapter tests)
+- `E2E_LIVE_GATEWAY=1` suite passes after T1.1 (and stays green thereafter)
+- Public snapshot redactions verified (`sessions: []`, `presence: []`, `configData: null`)
+- `npm run audit:prod` clean (enforced by CI)
+- Docs coverage gate ≥98% maintained
+
+## 7. Appendix: source reports
+
+- [`research/oc-changelog-60d.md`](research/oc-changelog-60d.md) — releases, 35 breaking changes (B1–B35), protocol changes (P1–P20), deprecations with deadlines
+- [`research/oc-features-docs.md`](research/oc-features-docs.md) — features catalogue, auth/security model, webchat protocol changes, experimental surfaces, adoption checklist
+- [`research/clawsprawl-api-surface.md`](research/clawsprawl-api-surface.md) — every WS/HTTP/auth/config touchpoint with file:line citations
+- [`research/clawsprawl-project-analysis.md`](research/clawsprawl-project-analysis.md) — architecture, gaps, test health, 22 feature opportunities (F1–F22)
