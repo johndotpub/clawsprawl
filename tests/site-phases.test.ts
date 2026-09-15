@@ -284,7 +284,7 @@ describe("architecture and release-governance hardening checks", () => {
     expect(pkg).toContain('"test:docs:coverage"');
     expect(pkg).toContain('"qa:strict"');
     expect(design).toContain("npm run qa:strict");
-    expect(design).toContain("## v0.42.0 Active Roadmap");
+    expect(design).toContain("## Active Roadmap");
     expect(readme).toMatch(/[Cc]overage\s+targets/);
     expect(readme).toContain("CodeQL");
     expect(readme).toContain("gitleaks");

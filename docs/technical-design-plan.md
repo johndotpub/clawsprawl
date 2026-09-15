@@ -157,7 +157,11 @@ npm run docs:screenshots
 
 ## OpenClaw Capability Audit
 
-### Currently Consumed Methods
+**Baseline refreshed 2026-09-14 against OpenClaw v2026.9.4** (was pinned to v2026.6.11/v2026.7.1). Full 60-day change analysis: `openclaw-migration-plan.md`.
+
+### Currently Consumed Methods (24)
+
+Core (v0.43 baseline):
 
 - `status`
 - `agents.list`
@@ -177,9 +181,20 @@ npm run docs:screenshots
 - `config.get`
 - `agents.files.list`
 
+Adopted in v0.42.76 (OpenClaw 2026.9 catch-up):
+
+- `progressCard.get` (capability-gated: `progress-card-agent-scope-v1`)
+- `tasks.list` (Task Ledger panel)
+- `sessions.usage.timeseries` (Usage Timeseries panel)
+- `node.list` (Node Fleet panel)
+- `diagnostics.stability` (Gateway Stability panel)
+- `audit.activity.list` (Audit Timeline panel)
+- `config.schema` (Config Schema panel)
+- `skills.proposals.list` (Skill Proposals panel)
+
 ### Available Upstream Methods Worth Evaluating
 
-The following are now **stable/callable** on OpenClaw v2026.6.11 / v2026.7.1 (operator.read unless noted). The v4 protocol surface is cumulative; `hello-ok.features.methods` is a *conservative* discovery list — several real methods (e.g. `sessions.usage`) are intentionally excluded, so absence from discovery does not imply non-existence.
+The following were **stable/callable** as of the v2026.6/7 audit; several have since been ADOPTED in v0.42.76 (marked ✅). Remaining candidates (operator.read unless noted):
 
 - `sessions.usage` / `sessions.usage.timeseries` / `sessions.usage.logs`
 - `commands.list`
@@ -205,15 +220,23 @@ Removed/renamed upstream (do not call): `node.pair.request` / `node.pair.verify`
   - Configurable `maxProtocol` via `OPENCLAW_GATEWAY_MAX_PROTOCOL` (protocol v5 forward-compat)
   - Structured `MISSING_SCOPE` error enrichment on rejected RPCs
   - Activity-feed buckets for OpenClaw v4 events (`config.changed`, `skills.changed`, `node.presence*`, `session.approval`, `session.observer`, `terminal.*`)
-- Likely private-only candidates (now stable upstream — panel work pending):
-  - `sessions.usage` / `sessions.usage.timeseries` / `sessions.usage.logs`
+- Adopted in v0.42.76 (OpenClaw 2026.9 catch-up):
+  - Capability registry expansion (`tool-events`, `session-scoped-events`, `usage-refreshing`) + `hello.features.capabilities` gating
+  - Progress cards (`progressCard.get` + `progressCard.changed`, agent-scope capability)
+  - `tasks.list` → Task Ledger panel
+  - `sessions.usage.timeseries` → Usage Timeseries panel
+  - `node.list` → Node Fleet panel
+  - `diagnostics.stability` → Gateway Stability panel
+  - `audit.activity.list` → Audit Timeline panel
+  - `config.schema` → Config Schema panel
+  - `skills.proposals.list` → Skill Proposals panel
+  - `activeRunIds` snapshot/delta semantics from `sessions.changed`
+- Remaining private-only candidates (panel work pending):
+  - `sessions.usage.logs`
   - `commands.list`
   - `tools.effective`
   - `tts.status` / `tts.providers`
   - `last-heartbeat`
-  - `diagnostics.stability` (recommended live-feed RPC)
-  - `tasks.list` / `tasks.get` (`tasks.cancel` is operator.write)
-  - `audit.activity.list`
 - Defer unless explicitly scheduled:
   - `logs.tail`
   - `gateway.identity.get`
@@ -221,10 +244,11 @@ Removed/renamed upstream (do not call): `node.pair.request` / `node.pair.verify`
 
 ### Protocol Version Tracking
 
-- OpenClaw v2026.6.11 and v2026.7.1 ship **protocol v4** (clawsprawl's current baseline).
+- OpenClaw 2026.9.4 ships **protocol v4** (clawsprawl's current baseline; gateway `PROTOCOL_VERSION = 4` verified in the installed build 2026-09-14).
 - Protocol **v5 is on `main` (unreleased)** and will be a hard break for v4-only clients. clawsprawl negotiates `minProtocol: 3, maxProtocol: 4` by default; `OPENCLAW_GATEWAY_MAX_PROTOCOL=5` opts into v5 negotiation without a code change. When v5 ships, raise `MIN_PROTOCOL_VERSION` and coordinate the client + Gateway upgrade together.
+- Handshake/auth contract (v2026.8.1): device-proof signatures use the **gateway-issued challenge timestamp**; reconnect event-sequence baselines reset per replacement WebSocket (this client implements no seq-gap recovery — see `client.ts`).
 
-## v0.42.0 Active Roadmap
+## Active Roadmap (v0.42.76)
 
 Status legend: `[ ]` pending, `[~]` in progress, `[x]` complete.
 
@@ -269,7 +293,7 @@ Status legend: `[ ]` pending, `[~]` in progress, `[x]` complete.
 - [x] Catch up protocol robustness to OpenClaw v2026.6/7 (agent-kind cap, configurable maxProtocol for v5, structured MISSING_SCOPE, v4 event buckets)
   - Acceptance: connect advertises caps; errors surface structured scope info; new events appear in Activity Feed
   - Verify: protocol/client/renderer tests
-- [ ] Map now-stable private RPCs to private panel surfaces (`diagnostics.stability`, `commands.list`, `tools.effective`, `tts.status`/`providers`, `last-heartbeat`, `tasks.list`, `audit.activity.list`, `sessions.usage*`)
+- [x] Map now-stable private RPCs to private panel surfaces (`diagnostics.stability`, `tasks.list`, `audit.activity.list`, `sessions.usage.timeseries` — v0.42.76; `commands.list`, `tools.effective`, `tts.status`/`providers`, `last-heartbeat`, `sessions.usage.logs` remain pending)
   - Acceptance: approved methods mapped to existing or new private panel surfaces
   - Verify: unit tests + e2e coverage
 
