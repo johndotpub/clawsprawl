@@ -1,7 +1,9 @@
 import type {
   AgentSummary,
+  AuditTimelineEntry,
   ChannelsStatusResponse,
   ConfigResponse,
+  ConfigSchemaEntry,
   ConnectionState,
   CronJobSummary,
   CronRunEntry,
@@ -12,16 +14,21 @@ import type {
   HealthResponse,
   MemoryStatusResponse,
   ModelInfo,
+  NodeFleetEntry,
   PresenceEntry,
   ProgressCard,
   SessionDetailEntry,
   SessionSummary,
   SkillsStatusResponse,
+  SkillProposalEntry,
+  StabilityEntry,
+  TaskLedgerEntry,
   ToolsCatalogResponse,
   UsageCostResponse,
   UsageStatusResponse,
-} from '../gateway/types';
-import type { ScopeHint } from '../gateway/server-service';
+  UsageTimeseriesEntry,
+} from "../gateway/types";
+import type { ScopeHint } from "../gateway/server-service";
 
 /** Complete state snapshot for the dashboard UI. */
 export interface DashboardState {
@@ -61,7 +68,11 @@ export interface DashboardState {
   /** Session detail entries derived from `sessions.list` RPC data. */
   sessionDetails: SessionDetailEntry[] | null;
   /** Update-available notification from `update.available` event or hello-ok snapshot. */
-  updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
+  updateAvailable: {
+    currentVersion: string;
+    latestVersion: string;
+    channel: string;
+  } | null;
   /** Shutdown notification from `shutdown` event. */
   shutdown: { reason: string; restartExpectedMs?: number } | null;
   /** Client-capability registry the gateway advertised (empty on older gateways). */
@@ -72,6 +83,20 @@ export interface DashboardState {
   progressCards: Record<string, ProgressCard>;
   /** Session keys with an active agent run — `activeRunIds` snapshot/delta events. */
   activeRunIds: string[];
+  /** Task ledger rows from `tasks.list` (private view). */
+  taskLedger: TaskLedgerEntry[] | null;
+  /** Usage timeseries buckets from `sessions.usage.timeseries` (private view). */
+  usageTimeseries: UsageTimeseriesEntry[] | null;
+  /** Node fleet rows from `node.list` (private view). */
+  nodeFleet: NodeFleetEntry[] | null;
+  /** Gateway stability feed from `diagnostics.stability` (private view). */
+  stability: StabilityEntry[] | null;
+  /** Audit timeline rows from `audit.activity.list` (private view). */
+  auditTimeline: AuditTimelineEntry[] | null;
+  /** Config schema map from `config.schema` (private view). */
+  configSchema: Record<string, ConfigSchemaEntry> | null;
+  /** Skill proposal queue from `skills.proposals.list` (private view). */
+  skillProposals: SkillProposalEntry[] | null;
 }
 
 /** Snapshot payload shape returned by dashboard snapshot API routes. */
@@ -99,7 +124,11 @@ export interface DashboardSnapshotPayload {
   configData?: ConfigResponse | null;
   fileStatus?: FileStatusEntry[] | null;
   sessionDetails?: SessionDetailEntry[] | null;
-  updateAvailable?: { currentVersion: string; latestVersion: string; channel: string } | null;
+  updateAvailable?: {
+    currentVersion: string;
+    latestVersion: string;
+    channel: string;
+  } | null;
   shutdown?: { reason: string; restartExpectedMs?: number } | null;
   /** Client-capability registry the gateway advertised (empty on older gateways). */
   gatewayCapabilities?: string[];
@@ -109,12 +138,26 @@ export interface DashboardSnapshotPayload {
   progressCards?: Record<string, ProgressCard>;
   /** Session keys with an active agent run — `activeRunIds` snapshot/delta events. */
   activeRunIds?: string[];
+  /** Task ledger rows from `tasks.list` (private view). */
+  taskLedger?: TaskLedgerEntry[] | null;
+  /** Usage timeseries buckets from `sessions.usage.timeseries` (private view). */
+  usageTimeseries?: UsageTimeseriesEntry[] | null;
+  /** Node fleet rows from `node.list` (private view). */
+  nodeFleet?: NodeFleetEntry[] | null;
+  /** Gateway stability feed from `diagnostics.stability` (private view). */
+  stability?: StabilityEntry[] | null;
+  /** Audit timeline rows from `audit.activity.list` (private view). */
+  auditTimeline?: AuditTimelineEntry[] | null;
+  /** Config schema map from `config.schema` (private view). */
+  configSchema?: Record<string, ConfigSchemaEntry> | null;
+  /** Skill proposal queue from `skills.proposals.list` (private view). */
+  skillProposals?: SkillProposalEntry[] | null;
 }
 
 type StateListener = (state: DashboardState) => void;
 
 const DEFAULT_STATE: DashboardState = {
-  connectionState: 'idle',
+  connectionState: "idle",
   lastUpdatedAt: null,
   lastSuccessfulSnapshotAt: null,
   stale: false,
@@ -145,6 +188,13 @@ const DEFAULT_STATE: DashboardState = {
   scopeHints: [],
   progressCards: {},
   activeRunIds: [],
+  taskLedger: null,
+  usageTimeseries: null,
+  nodeFleet: null,
+  stability: null,
+  auditTimeline: null,
+  configSchema: null,
+  skillProposals: null,
 };
 
 /** Maximum events retained in the ring buffer (default 200). */
@@ -193,11 +243,14 @@ export class DashboardStore {
 
   /** Update the WebSocket connection state, incrementing counters as needed. */
   setConnectionState(connectionState: ConnectionState): void {
-    if (connectionState === 'reconnecting') {
-      this.update({ connectionState, reconnectCount: this.state.reconnectCount + 1 });
+    if (connectionState === "reconnecting") {
+      this.update({
+        connectionState,
+        reconnectCount: this.state.reconnectCount + 1,
+      });
       return;
     }
-    if (connectionState === 'error' || connectionState === 'disconnected') {
+    if (connectionState === "error" || connectionState === "disconnected") {
       this.update({ connectionState, errorCount: this.state.errorCount + 1 });
       return;
     }
@@ -260,7 +313,10 @@ export class DashboardStore {
   /** Update token usage data from `usage.cost`. */
   setUsageCost(usageCost: UsageCostResponse): void {
     if (usageCost.daily && usageCost.daily.length > MAX_DAILY_COST_ENTRIES) {
-      usageCost = { ...usageCost, daily: usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) };
+      usageCost = {
+        ...usageCost,
+        daily: usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES),
+      };
     }
     this.update({ usageCost });
   }
@@ -311,12 +367,20 @@ export class DashboardStore {
   }
 
   /** Set update-available notification from `update.available` event. */
-  setUpdateAvailable(updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null): void {
+  setUpdateAvailable(
+    updateAvailable: {
+      currentVersion: string;
+      latestVersion: string;
+      channel: string;
+    } | null,
+  ): void {
     this.update({ updateAvailable });
   }
 
   /** Set shutdown notification from `shutdown` event. */
-  setShutdown(shutdown: { reason: string; restartExpectedMs?: number } | null): void {
+  setShutdown(
+    shutdown: { reason: string; restartExpectedMs?: number } | null,
+  ): void {
     this.update({ shutdown });
   }
 
@@ -356,7 +420,11 @@ export class DashboardStore {
     }
     const result: EventFrame[] = new Array(this.maxEvents);
     for (let i = 0; i < this.maxEvents; i++) {
-      result[i] = this.eventBuffer[(this.eventHead + this.maxEvents - 1 - i + this.maxEvents) % this.maxEvents];
+      result[i] =
+        this.eventBuffer[
+          (this.eventHead + this.maxEvents - 1 - i + this.maxEvents) %
+            this.maxEvents
+        ];
     }
     return result;
   }
@@ -370,11 +438,15 @@ export class DashboardStore {
   applySnapshot(snapshot: DashboardSnapshotPayload): void {
     const patch: Partial<DashboardState> = {};
 
-    if (snapshot.connectionState !== undefined) patch.connectionState = snapshot.connectionState;
-    if (snapshot.lastSuccessfulSnapshotAt !== undefined) patch.lastSuccessfulSnapshotAt = snapshot.lastSuccessfulSnapshotAt;
+    if (snapshot.connectionState !== undefined)
+      patch.connectionState = snapshot.connectionState;
+    if (snapshot.lastSuccessfulSnapshotAt !== undefined)
+      patch.lastSuccessfulSnapshotAt = snapshot.lastSuccessfulSnapshotAt;
     if (snapshot.stale !== undefined) patch.stale = snapshot.stale;
-    if (snapshot.reconnectCount !== undefined) patch.reconnectCount = snapshot.reconnectCount;
-    if (snapshot.errorCount !== undefined) patch.errorCount = snapshot.errorCount;
+    if (snapshot.reconnectCount !== undefined)
+      patch.reconnectCount = snapshot.reconnectCount;
+    if (snapshot.errorCount !== undefined)
+      patch.errorCount = snapshot.errorCount;
     if (snapshot.status !== undefined) patch.status = snapshot.status;
     if (snapshot.health !== undefined) patch.health = snapshot.health;
     if (snapshot.presence !== undefined) patch.presence = snapshot.presence;
@@ -383,31 +455,67 @@ export class DashboardStore {
     if (snapshot.cronJobs !== undefined) patch.cronJobs = snapshot.cronJobs;
     if (snapshot.cronRuns !== undefined) patch.cronRuns = snapshot.cronRuns;
     if (snapshot.models !== undefined) patch.models = snapshot.models;
-    if (snapshot.usageCost !== undefined) patch.usageCost = snapshot.usageCost && snapshot.usageCost.daily && snapshot.usageCost.daily.length > MAX_DAILY_COST_ENTRIES
-      ? { ...snapshot.usageCost, daily: snapshot.usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES) }
-      : snapshot.usageCost;
-    if (snapshot.usageStatus !== undefined) patch.usageStatus = snapshot.usageStatus;
-    if (snapshot.toolsCatalog !== undefined) patch.toolsCatalog = snapshot.toolsCatalog;
-    if (snapshot.skillsStatus !== undefined) patch.skillsStatus = snapshot.skillsStatus;
-    if (snapshot.channelsStatus !== undefined) patch.channelsStatus = snapshot.channelsStatus;
-    if (snapshot.cronScheduler !== undefined) patch.cronScheduler = snapshot.cronScheduler;
-    if (snapshot.memoryStatus !== undefined) patch.memoryStatus = snapshot.memoryStatus;
-    if (snapshot.configData !== undefined) patch.configData = snapshot.configData;
-    if (snapshot.fileStatus !== undefined) patch.fileStatus = snapshot.fileStatus;
-    if (snapshot.sessionDetails !== undefined) patch.sessionDetails = snapshot.sessionDetails;
-    if (snapshot.updateAvailable !== undefined) patch.updateAvailable = snapshot.updateAvailable;
+    if (snapshot.usageCost !== undefined)
+      patch.usageCost =
+        snapshot.usageCost &&
+        snapshot.usageCost.daily &&
+        snapshot.usageCost.daily.length > MAX_DAILY_COST_ENTRIES
+          ? {
+              ...snapshot.usageCost,
+              daily: snapshot.usageCost.daily.slice(-MAX_DAILY_COST_ENTRIES),
+            }
+          : snapshot.usageCost;
+    if (snapshot.usageStatus !== undefined)
+      patch.usageStatus = snapshot.usageStatus;
+    if (snapshot.toolsCatalog !== undefined)
+      patch.toolsCatalog = snapshot.toolsCatalog;
+    if (snapshot.skillsStatus !== undefined)
+      patch.skillsStatus = snapshot.skillsStatus;
+    if (snapshot.channelsStatus !== undefined)
+      patch.channelsStatus = snapshot.channelsStatus;
+    if (snapshot.cronScheduler !== undefined)
+      patch.cronScheduler = snapshot.cronScheduler;
+    if (snapshot.memoryStatus !== undefined)
+      patch.memoryStatus = snapshot.memoryStatus;
+    if (snapshot.configData !== undefined)
+      patch.configData = snapshot.configData;
+    if (snapshot.fileStatus !== undefined)
+      patch.fileStatus = snapshot.fileStatus;
+    if (snapshot.sessionDetails !== undefined)
+      patch.sessionDetails = snapshot.sessionDetails;
+    if (snapshot.updateAvailable !== undefined)
+      patch.updateAvailable = snapshot.updateAvailable;
     if (snapshot.shutdown !== undefined) patch.shutdown = snapshot.shutdown;
-    if (snapshot.progressCards !== undefined) patch.progressCards = snapshot.progressCards;
-    if (snapshot.activeRunIds !== undefined) patch.activeRunIds = snapshot.activeRunIds;
+    if (snapshot.progressCards !== undefined)
+      patch.progressCards = snapshot.progressCards;
+    if (snapshot.activeRunIds !== undefined)
+      patch.activeRunIds = snapshot.activeRunIds;
+    if (snapshot.gatewayCapabilities !== undefined)
+      patch.gatewayCapabilities = snapshot.gatewayCapabilities;
+    if (snapshot.scopeHints !== undefined)
+      patch.scopeHints = snapshot.scopeHints;
+    if (snapshot.taskLedger !== undefined)
+      patch.taskLedger = snapshot.taskLedger;
+    if (snapshot.usageTimeseries !== undefined)
+      patch.usageTimeseries = snapshot.usageTimeseries;
+    if (snapshot.nodeFleet !== undefined) patch.nodeFleet = snapshot.nodeFleet;
+    if (snapshot.stability !== undefined) patch.stability = snapshot.stability;
+    if (snapshot.auditTimeline !== undefined)
+      patch.auditTimeline = snapshot.auditTimeline;
+    if (snapshot.configSchema !== undefined)
+      patch.configSchema = snapshot.configSchema;
+    if (snapshot.skillProposals !== undefined)
+      patch.skillProposals = snapshot.skillProposals;
 
     this.update(patch);
   }
 
   private update(patch: Partial<DashboardState>): void {
     const now = Date.now();
-    const ts = now - this.lastNotifiedAt >= DashboardStore.UPDATE_DEBOUNCE_MS
-      ? new Date(now).toISOString()
-      : this.state.lastUpdatedAt ?? new Date(now).toISOString();
+    const ts =
+      now - this.lastNotifiedAt >= DashboardStore.UPDATE_DEBOUNCE_MS
+        ? new Date(now).toISOString()
+        : (this.state.lastUpdatedAt ?? new Date(now).toISOString());
     if (ts !== this.state.lastUpdatedAt) this.lastNotifiedAt = now;
 
     this.state = {
@@ -416,7 +524,11 @@ export class DashboardStore {
       lastUpdatedAt: ts,
     };
     for (const listener of this.listeners) {
-      try { listener(this.state); } catch (err) { console.error('[clawsprawl:store] listener error:', err); }
+      try {
+        listener(this.state);
+      } catch (err) {
+        console.error("[clawsprawl:store] listener error:", err);
+      }
     }
   }
 }

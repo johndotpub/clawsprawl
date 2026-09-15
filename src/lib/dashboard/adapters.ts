@@ -12,20 +12,27 @@ import type {
   ModelInfo,
   PresenceEntry,
   ProgressCard,
+  AuditTimelineEntry,
+  ConfigSchemaEntry,
+  NodeFleetEntry,
   SessionDetailEntry,
+  SkillProposalEntry,
+  StabilityEntry,
+  TaskLedgerEntry,
+  UsageTimeseriesEntry,
   SessionSummary,
   SkillsStatusResponse,
   ToolsCatalogResponse,
   UsageCostResponse,
   UsageStatusResponse,
-} from '../gateway/types';
+} from "../gateway/types";
 
 /** Per-provider health summary derived from live model data. */
 export interface ProviderHealthSummary {
   provider: string;
   modelCount: number;
   /** Always `'healthy'` — models.list provides no error/degraded signals. */
-  status: 'healthy';
+  status: "healthy";
 }
 
 /** Coerce `value` to an array, returning an empty array if it is not one. */
@@ -35,7 +42,9 @@ function asArray(value: unknown): unknown[] {
 
 /** Coerce `value` to a plain object record, returning an empty record if it is not one. */
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 /**
@@ -46,7 +55,7 @@ function asRecord(value: unknown): Record<string, unknown> {
  * @returns `value` if it is a string, otherwise `fallback`.
  */
 export function asString(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
+  return typeof value === "string" ? value : fallback;
 }
 
 /**
@@ -57,17 +66,17 @@ export function asString(value: unknown, fallback: string): string {
  * @returns `value` if it is a number, otherwise `fallback`.
  */
 export function asNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' ? value : fallback;
+  return typeof value === "number" ? value : fallback;
 }
 
 /** Return `value` as a number if it is one, otherwise `null`. */
 function asNumberOrNull(value: unknown): number | null {
-  return typeof value === 'number' ? value : null;
+  return typeof value === "number" ? value : null;
 }
 
 /** Return `value` as a string if it is one, otherwise `null`. */
 function asStringOrNull(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
+  return typeof value === "string" ? value : null;
 }
 
 /**
@@ -78,8 +87,13 @@ function asStringOrNull(value: unknown): string | null {
  * @param value - Value to check — included only when it is a string.
  * @returns `{ [key]: value }` or `{}`.
  */
-function optionalString<K extends string>(key: K, value: unknown): { [P in K]?: string } {
-  return typeof value === 'string' ? { [key]: value } as { [P in K]?: string } : {} as { [P in K]?: string };
+function optionalString<K extends string>(
+  key: K,
+  value: unknown,
+): { [P in K]?: string } {
+  return typeof value === "string"
+    ? ({ [key]: value } as { [P in K]?: string })
+    : ({} as { [P in K]?: string });
 }
 
 /**
@@ -90,8 +104,13 @@ function optionalString<K extends string>(key: K, value: unknown): { [P in K]?: 
  * @param value - Value to check — included only when it is a number.
  * @returns `{ [key]: value }` or `{}`.
  */
-function optionalNumber<K extends string>(key: K, value: unknown): { [P in K]?: number } {
-  return typeof value === 'number' ? { [key]: value } as { [P in K]?: number } : {} as { [P in K]?: number };
+function optionalNumber<K extends string>(
+  key: K,
+  value: unknown,
+): { [P in K]?: number } {
+  return typeof value === "number"
+    ? ({ [key]: value } as { [P in K]?: number })
+    : ({} as { [P in K]?: number });
 }
 
 /**
@@ -117,14 +136,14 @@ function unwrapEnvelope(payload: unknown, key: string): unknown[] {
  */
 export function normalizeAgents(payload: unknown): AgentSummary[] {
   // Native protocol: { agents: [...] }
-  const source = unwrapEnvelope(payload, 'agents');
+  const source = unwrapEnvelope(payload, "agents");
   return source
     .map((entry) => asRecord(entry))
     .map((entry, index) => ({
       id: asString(entry.id, `agent-${index}`),
-      ...optionalString('name', entry.name),
+      ...optionalString("name", entry.name),
       ...(entry.model !== undefined ? { model: entry.model } : {}),
-      ...optionalString('workspace', entry.workspace),
+      ...optionalString("workspace", entry.workspace),
     })) as AgentSummary[];
 }
 
@@ -136,7 +155,7 @@ export function normalizeAgents(payload: unknown): AgentSummary[] {
  */
 export function extractDefaultAgentId(payload: unknown): string | undefined {
   const record = asRecord(payload);
-  return typeof record.defaultId === 'string' ? record.defaultId : undefined;
+  return typeof record.defaultId === "string" ? record.defaultId : undefined;
 }
 
 /**
@@ -149,7 +168,7 @@ export function extractDefaultAgentId(payload: unknown): string | undefined {
  * @returns Normalized array of session summaries.
  */
 export function normalizeSessions(payload: unknown): SessionSummary[] {
-  const source = unwrapEnvelope(payload, 'sessions');
+  const source = unwrapEnvelope(payload, "sessions");
   return source.map((entry, index) => {
     const rec = asRecord(entry);
     // The native protocol uses 'key' as the unique ID, not 'id'
@@ -157,15 +176,17 @@ export function normalizeSessions(payload: unknown): SessionSummary[] {
     // Extract agentId from the key if not explicit (e.g. "agent:ceo:main" → "ceo")
     const agentId = asString(
       rec.agentId,
-      key.startsWith('agent:') ? key.split(':')[1] ?? 'unknown' : 'unknown',
+      key.startsWith("agent:") ? (key.split(":")[1] ?? "unknown") : "unknown",
     );
     return {
       ...rec,
       key,
       agentId,
-      ...optionalString('displayName', rec.displayName),
-      ...optionalString('channel', rec.channel),
-      ...(rec.updatedAt !== undefined ? { updatedAt: rec.updatedAt as number } : {}),
+      ...optionalString("displayName", rec.displayName),
+      ...optionalString("channel", rec.channel),
+      ...(rec.updatedAt !== undefined
+        ? { updatedAt: rec.updatedAt as number }
+        : {}),
     };
   });
 }
@@ -178,7 +199,7 @@ export function normalizeSessions(payload: unknown): SessionSummary[] {
  */
 export function extractSessionCount(payload: unknown): number {
   const record = asRecord(payload);
-  return typeof record.count === 'number' ? record.count : 0;
+  return typeof record.count === "number" ? record.count : 0;
 }
 
 /**
@@ -191,7 +212,7 @@ export function extractSessionCount(payload: unknown): number {
  * @returns Normalized array of cron job summaries.
  */
 export function normalizeCronJobs(payload: unknown): CronJobSummary[] {
-  const source = unwrapEnvelope(payload, 'jobs');
+  const source = unwrapEnvelope(payload, "jobs");
   return source.map((entry, index) => {
     const rec = asRecord(entry);
     return {
@@ -214,8 +235,9 @@ export function normalizeCronJobs(payload: unknown): CronJobSummary[] {
  * @returns Normalized array of cron run entries.
  */
 export function normalizeCronRuns(payload: unknown): CronRunEntry[] {
-  if (Array.isArray(payload)) return payload.map((entry) => ({ ...asRecord(entry) })) as CronRunEntry[];
-  const source = unwrapEnvelope(payload, 'entries');
+  if (Array.isArray(payload))
+    return payload.map((entry) => ({ ...asRecord(entry) })) as CronRunEntry[];
+  const source = unwrapEnvelope(payload, "entries");
   return source.map((entry) => ({ ...asRecord(entry) })) as CronRunEntry[];
 }
 
@@ -229,22 +251,25 @@ export function normalizeCronRuns(payload: unknown): CronRunEntry[] {
  * @returns Normalized array of model info objects.
  */
 export function normalizeModels(payload: unknown): ModelInfo[] {
-  const source = unwrapEnvelope(payload, 'models');
+  const source = unwrapEnvelope(payload, "models");
   return source.map((entry) => {
     const rec = asRecord(entry);
-    const id = asString(rec.id, asString(rec.name, ''));
-    const provider = asString(
-      rec.provider,
-      id.includes('/') ? id.split('/')[0] : '',
-    ) || undefined;
+    const id = asString(rec.id, asString(rec.name, ""));
+    const provider =
+      asString(rec.provider, id.includes("/") ? id.split("/")[0] : "") ||
+      undefined;
 
     return {
       ...rec,
       ...(id ? { id } : {}),
       ...(rec.name ? { name: String(rec.name) } : {}),
       ...(provider ? { provider } : {}),
-      ...(rec.contextWindow !== undefined ? { contextWindow: Number(rec.contextWindow) } : {}),
-      ...(rec.reasoning !== undefined ? { reasoning: Boolean(rec.reasoning) } : {}),
+      ...(rec.contextWindow !== undefined
+        ? { contextWindow: Number(rec.contextWindow) }
+        : {}),
+      ...(rec.reasoning !== undefined
+        ? { reasoning: Boolean(rec.reasoning) }
+        : {}),
     };
   }) as ModelInfo[];
 }
@@ -255,10 +280,12 @@ export function normalizeModels(payload: unknown): ModelInfo[] {
  * @param sessions - Array of session summaries to aggregate.
  * @returns Map from agent ID to session count.
  */
-export function countSessionsByAgent(sessions: SessionSummary[]): Map<string, number> {
+export function countSessionsByAgent(
+  sessions: SessionSummary[],
+): Map<string, number> {
   const counts = new Map<string, number>();
   for (const session of sessions) {
-    const agentId = asString(session.agentId, 'unknown');
+    const agentId = asString(session.agentId, "unknown");
     counts.set(agentId, (counts.get(agentId) ?? 0) + 1);
   }
   return counts;
@@ -272,9 +299,9 @@ export function countSessionsByAgent(sessions: SessionSummary[]): Map<string, nu
  */
 export function formatEventPreview(event: unknown): string {
   const record = asRecord(event);
-  const name = asString(record.event, 'event');
-  const payload = 'payload' in record ? record.payload : null;
-  const raw = payload ? JSON.stringify(payload) : 'no payload';
+  const name = asString(record.event, "event");
+  const payload = "payload" in record ? record.payload : null;
+  const raw = payload ? JSON.stringify(payload) : "no payload";
   const payloadText = raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
   return `${name}: ${payloadText}`;
 }
@@ -286,11 +313,13 @@ export function formatEventPreview(event: unknown): string {
  * @param models - Array of model info objects from the gateway.
  * @returns Sorted array of per-provider health summaries.
  */
-export function summarizeProviderHealth(models: ModelInfo[]): ProviderHealthSummary[] {
+export function summarizeProviderHealth(
+  models: ModelInfo[],
+): ProviderHealthSummary[] {
   const counts = new Map<string, number>();
 
   for (const model of models) {
-    const provider = asString(model.provider, 'unknown');
+    const provider = asString(model.provider, "unknown");
     counts.set(provider, (counts.get(provider) ?? 0) + 1);
   }
 
@@ -299,7 +328,7 @@ export function summarizeProviderHealth(models: ModelInfo[]): ProviderHealthSumm
     .map(([provider, modelCount]) => ({
       provider,
       modelCount,
-      status: 'healthy' as const,
+      status: "healthy" as const,
     }));
 }
 
@@ -310,11 +339,16 @@ export function summarizeProviderHealth(models: ModelInfo[]): ProviderHealthSumm
  * @param runs - Pre-sorted array of cron run entries (newest first).
  * @returns Map from job key to the latest cron run entry.
  */
-export function latestCronRunsByJob(runs: CronRunEntry[]): Map<string, CronRunEntry> {
+export function latestCronRunsByJob(
+  runs: CronRunEntry[],
+): Map<string, CronRunEntry> {
   const map = new Map<string, CronRunEntry>();
 
   for (const run of runs) {
-    const key = asString(run.jobId, asString(run.name, asString(run.jobName, '')));
+    const key = asString(
+      run.jobId,
+      asString(run.name, asString(run.jobName, "")),
+    );
     if (key && !map.has(key)) {
       map.set(key, run);
     }
@@ -331,19 +365,23 @@ export function latestCronRunsByJob(runs: CronRunEntry[]): Map<string, CronRunEn
  */
 export function extractCronRunError(run: CronRunEntry | undefined): string {
   if (!run) {
-    return '';
+    return "";
   }
 
-  if (typeof run.error === 'string' && run.error.trim().length > 0) {
+  if (typeof run.error === "string" && run.error.trim().length > 0) {
     return run.error.trim();
   }
 
   const nested = run.error as Record<string, unknown> | undefined;
-  if (nested && typeof nested.message === 'string' && nested.message.trim().length > 0) {
+  if (
+    nested &&
+    typeof nested.message === "string" &&
+    nested.message.trim().length > 0
+  ) {
     return nested.message.trim();
   }
 
-  return '';
+  return "";
 }
 
 /**
@@ -360,12 +398,18 @@ export function normalizeHealth(payload: unknown): HealthResponse {
   return {
     ok: record.ok === true,
     ts: asNumber(record.ts, 0),
-    ...optionalNumber('durationMs', record.durationMs),
-    ...(record.channels ? { channels: record.channels as Record<string, unknown> } : {}),
-    ...(Array.isArray(record.channelOrder) ? { channelOrder: record.channelOrder as string[] } : {}),
-    ...(record.channelLabels ? { channelLabels: record.channelLabels as Record<string, string> } : {}),
-    ...optionalNumber('heartbeatSeconds', record.heartbeatSeconds),
-    ...optionalString('defaultAgentId', record.defaultAgentId),
+    ...optionalNumber("durationMs", record.durationMs),
+    ...(record.channels
+      ? { channels: record.channels as Record<string, unknown> }
+      : {}),
+    ...(Array.isArray(record.channelOrder)
+      ? { channelOrder: record.channelOrder as string[] }
+      : {}),
+    ...(record.channelLabels
+      ? { channelLabels: record.channelLabels as Record<string, string> }
+      : {}),
+    ...optionalNumber("heartbeatSeconds", record.heartbeatSeconds),
+    ...optionalString("defaultAgentId", record.defaultAgentId),
     ...(Array.isArray(record.agents) ? { agents: record.agents } : {}),
   };
 }
@@ -382,29 +426,39 @@ export function normalizeStatus(payload: unknown): GatewayStatus {
   const record = asRecord(payload);
   return {
     ok: true,
-    ...optionalString('runtimeVersion', record.runtimeVersion),
-    ...(record.tasks ? { tasks: record.tasks as GatewayStatus['tasks'] } : {}),
-    ...(record.taskAudit ? { taskAudit: record.taskAudit as GatewayStatus['taskAudit'] } : {}),
-    ...(Array.isArray(record.channelSummary) ? { channelSummary: record.channelSummary as string[] } : {}),
-    ...(record.sessions ? { sessions: normalizeStatusSessions(record.sessions) } : {}),
-    ...(record.heartbeat ? { heartbeat: record.heartbeat as GatewayStatus['heartbeat'] } : {}),
+    ...optionalString("runtimeVersion", record.runtimeVersion),
+    ...(record.tasks ? { tasks: record.tasks as GatewayStatus["tasks"] } : {}),
+    ...(record.taskAudit
+      ? { taskAudit: record.taskAudit as GatewayStatus["taskAudit"] }
+      : {}),
+    ...(Array.isArray(record.channelSummary)
+      ? { channelSummary: record.channelSummary as string[] }
+      : {}),
+    ...(record.sessions
+      ? { sessions: normalizeStatusSessions(record.sessions) }
+      : {}),
+    ...(record.heartbeat
+      ? { heartbeat: record.heartbeat as GatewayStatus["heartbeat"] }
+      : {}),
   };
 }
 
-function normalizeStatusSessions(payload: unknown): GatewayStatus['sessions'] {
+function normalizeStatusSessions(payload: unknown): GatewayStatus["sessions"] {
   const record = asRecord(payload);
   const byAgent = asArray(record.byAgent).map((entry) => {
     const rec = asRecord(entry);
     return {
-      agentId: asString(rec.agentId, 'unknown'),
+      agentId: asString(rec.agentId, "unknown"),
       count: asNumber(rec.count, 0),
-      ...optionalString('path', rec.path),
+      ...optionalString("path", rec.path),
     };
   });
   return {
     count: asNumber(record.count, 0),
     ...(byAgent.length > 0 ? { byAgent } : {}),
-    ...(record.defaults ? { defaults: record.defaults as Record<string, unknown> } : {}),
+    ...(record.defaults
+      ? { defaults: record.defaults as Record<string, unknown> }
+      : {}),
   };
 }
 
@@ -419,17 +473,17 @@ export function normalizePresence(payload: unknown): PresenceEntry[] {
     const rec = asRecord(entry);
     return {
       ts: asNumber(rec.ts, 0),
-      ...optionalString('host', rec.host),
-      ...optionalString('ip', rec.ip),
-      ...optionalString('version', rec.version),
-      ...optionalString('platform', rec.platform),
-      ...optionalString('deviceFamily', rec.deviceFamily),
-      ...optionalString('mode', rec.mode),
-      ...optionalString('reason', rec.reason),
-      ...optionalString('text', rec.text),
+      ...optionalString("host", rec.host),
+      ...optionalString("ip", rec.ip),
+      ...optionalString("version", rec.version),
+      ...optionalString("platform", rec.platform),
+      ...optionalString("deviceFamily", rec.deviceFamily),
+      ...optionalString("mode", rec.mode),
+      ...optionalString("reason", rec.reason),
+      ...optionalString("text", rec.text),
       ...(Array.isArray(rec.roles) ? { roles: rec.roles as string[] } : {}),
       ...(Array.isArray(rec.scopes) ? { scopes: rec.scopes as string[] } : {}),
-      ...optionalString('instanceId', rec.instanceId),
+      ...optionalString("instanceId", rec.instanceId),
     };
   });
 }
@@ -455,14 +509,18 @@ export interface ChannelHealthSummary {
  * @param health - The normalized health response, or `null`.
  * @returns Flat array of per-channel health summary objects.
  */
-export function extractChannelHealth(health: HealthResponse | null): ChannelHealthSummary[] {
+export function extractChannelHealth(
+  health: HealthResponse | null,
+): ChannelHealthSummary[] {
   if (!health?.channels) return [];
 
   const order = health.channelOrder ?? Object.keys(health.channels);
   const labels = health.channelLabels ?? {};
 
   return order.map((channel) => {
-    const data = asRecord((health.channels as Record<string, unknown>)?.[channel]);
+    const data = asRecord(
+      (health.channels as Record<string, unknown>)?.[channel],
+    );
     const probe = asRecord(data.probe);
     const bot = asRecord(probe.bot);
     return {
@@ -494,7 +552,7 @@ export function normalizeUsageCost(payload: unknown): UsageCostResponse {
   const daily = asArray(record.daily).map((entry) => {
     const rec = asRecord(entry);
     return {
-      date: asString(rec.date, ''),
+      date: asString(rec.date, ""),
       input: asNumber(rec.input, 0),
       output: asNumber(rec.output, 0),
       cacheRead: asNumber(rec.cacheRead, 0),
@@ -542,14 +600,22 @@ export function normalizeUsageStatus(payload: unknown): UsageStatusResponse {
   const providers = sourceRows
     .map((entry) => {
       const rec = asRecord(entry);
-      const provider = asString(rec.provider, asString(rec.name, asString(rec.id, ''))).trim();
+      const provider = asString(
+        rec.provider,
+        asString(rec.name, asString(rec.id, "")),
+      ).trim();
       if (!provider) return null;
 
       const used = asNumberOrNull(rec.used ?? rec.current ?? rec.consumed);
       const limit = asNumberOrNull(rec.limit ?? rec.max ?? rec.quota);
       const remaining = asNumberOrNull(rec.remaining ?? rec.left);
-      const resetAt = asNumberOrNull(rec.resetAt ?? rec.resetAtMs ?? rec.windowEndsAt);
-      const status = asString(rec.status, remaining !== null && remaining <= 0 ? 'exhausted' : 'ok');
+      const resetAt = asNumberOrNull(
+        rec.resetAt ?? rec.resetAtMs ?? rec.windowEndsAt,
+      );
+      const status = asString(
+        rec.status,
+        remaining !== null && remaining <= 0 ? "exhausted" : "ok",
+      );
 
       return {
         provider,
@@ -560,7 +626,10 @@ export function normalizeUsageStatus(payload: unknown): UsageStatusResponse {
         resetAt,
       };
     })
-    .filter((entry): entry is UsageStatusResponse['providers'][number] => entry !== null);
+    .filter(
+      (entry): entry is UsageStatusResponse["providers"][number] =>
+        entry !== null,
+    );
 
   return {
     updatedAt: asNumber(record.updatedAt ?? record.ts, Date.now()),
@@ -581,25 +650,27 @@ export function normalizeToolsCatalog(payload: unknown): ToolsCatalogResponse {
     const tools = asArray(g.tools).map((tool) => {
       const t = asRecord(tool);
       return {
-        id: asString(t.id, ''),
-        label: asString(t.label, ''),
-        description: asString(t.description, ''),
-        source: asString(t.source, ''),
-        ...(Array.isArray(t.defaultProfiles) ? { defaultProfiles: t.defaultProfiles as string[] } : {}),
+        id: asString(t.id, ""),
+        label: asString(t.label, ""),
+        description: asString(t.description, ""),
+        source: asString(t.source, ""),
+        ...(Array.isArray(t.defaultProfiles)
+          ? { defaultProfiles: t.defaultProfiles as string[] }
+          : {}),
       };
     });
     return {
-      id: asString(g.id, ''),
-      label: asString(g.label, ''),
-      source: asString(g.source, ''),
+      id: asString(g.id, ""),
+      label: asString(g.label, ""),
+      source: asString(g.source, ""),
       tools,
     };
   });
   return {
-    agentId: asString(record.agentId, ''),
+    agentId: asString(record.agentId, ""),
     profiles: asArray(record.profiles).map((p) => {
       const pr = asRecord(p);
-      return { id: asString(pr.id, ''), label: asString(pr.label, '') };
+      return { id: asString(pr.id, ""), label: asString(pr.label, "") };
     }),
     groups,
   };
@@ -617,12 +688,12 @@ export function normalizeSkillsStatus(payload: unknown): SkillsStatusResponse {
     const rec = asRecord(entry);
     const missing = asRecord(rec.missing);
     return {
-      name: asString(rec.name, ''),
-      description: asString(rec.description, ''),
-      source: asString(rec.source, ''),
+      name: asString(rec.name, ""),
+      description: asString(rec.description, ""),
+      source: asString(rec.source, ""),
       bundled: rec.bundled === true,
-      ...optionalString('emoji', rec.emoji),
-      ...optionalString('homepage', rec.homepage),
+      ...optionalString("emoji", rec.emoji),
+      ...optionalString("homepage", rec.homepage),
       always: rec.always === true,
       disabled: rec.disabled === true,
       eligible: rec.eligible === true,
@@ -633,8 +704,8 @@ export function normalizeSkillsStatus(payload: unknown): SkillsStatusResponse {
     };
   });
   return {
-    workspaceDir: asString(record.workspaceDir, ''),
-    managedSkillsDir: asString(record.managedSkillsDir, ''),
+    workspaceDir: asString(record.workspaceDir, ""),
+    managedSkillsDir: asString(record.managedSkillsDir, ""),
     skills,
   };
 }
@@ -645,14 +716,19 @@ export function normalizeSkillsStatus(payload: unknown): SkillsStatusResponse {
  * @param payload - Raw gateway channels status response to normalize.
  * @returns Normalized channels status with per-channel details and accounts.
  */
-export function normalizeChannelsStatus(payload: unknown): ChannelsStatusResponse {
+export function normalizeChannelsStatus(
+  payload: unknown,
+): ChannelsStatusResponse {
   const record = asRecord(payload);
-  const channelOrder = Array.isArray(record.channelOrder) ? record.channelOrder as string[] : [];
-  const channelLabels = typeof record.channelLabels === 'object' && record.channelLabels !== null
-    ? record.channelLabels as Record<string, string>
-    : {};
+  const channelOrder = Array.isArray(record.channelOrder)
+    ? (record.channelOrder as string[])
+    : [];
+  const channelLabels =
+    typeof record.channelLabels === "object" && record.channelLabels !== null
+      ? (record.channelLabels as Record<string, string>)
+      : {};
   const rawChannels = asRecord(record.channels);
-  const channels: ChannelsStatusResponse['channels'] = {};
+  const channels: ChannelsStatusResponse["channels"] = {};
   for (const [key, val] of Object.entries(rawChannels)) {
     const ch = asRecord(val);
     channels[key] = {
@@ -664,13 +740,13 @@ export function normalizeChannelsStatus(payload: unknown): ChannelsStatusRespons
     };
   }
   const rawAccounts = asRecord(record.channelAccounts);
-  const channelAccounts: ChannelsStatusResponse['channelAccounts'] = {};
+  const channelAccounts: ChannelsStatusResponse["channelAccounts"] = {};
   for (const [key, val] of Object.entries(rawAccounts)) {
     channelAccounts[key] = asArray(val).map((entry) => {
       const acc = asRecord(entry);
       const bot = asRecord(acc.bot);
       return {
-        accountId: asString(acc.accountId, 'default'),
+        accountId: asString(acc.accountId, "default"),
         enabled: acc.enabled === true,
         configured: acc.configured === true,
         running: acc.running === true,
@@ -681,7 +757,11 @@ export function normalizeChannelsStatus(payload: unknown): ChannelsStatusRespons
         lastInboundAt: asNumberOrNull(acc.lastInboundAt),
         lastOutboundAt: asNumberOrNull(acc.lastOutboundAt),
         reconnectAttempts: asNumber(acc.reconnectAttempts, 0),
-        ...(bot.id ? { bot: { id: String(bot.id), username: asString(bot.username, '') } } : {}),
+        ...(bot.id
+          ? {
+              bot: { id: String(bot.id), username: asString(bot.username, "") },
+            }
+          : {}),
       };
     });
   }
@@ -706,7 +786,7 @@ export function normalizeCronScheduler(payload: unknown): CronSchedulerStatus {
     enabled: record.enabled === true,
     jobs: asNumber(record.jobs, 0),
     nextWakeAtMs: asNumberOrNull(record.nextWakeAtMs),
-    ...optionalString('storePath', record.storePath),
+    ...optionalString("storePath", record.storePath),
   };
 }
 
@@ -720,19 +800,22 @@ export function normalizeMemoryStatus(payload: unknown): MemoryStatusResponse {
   const record = asRecord(payload);
   const dreaming = asRecord(record.dreaming);
   const rawPhases = asRecord(dreaming.phases);
-  const phases: Record<string, { enabled: boolean; cron: string; [key: string]: unknown }> = {};
+  const phases: Record<
+    string,
+    { enabled: boolean; cron: string; [key: string]: unknown }
+  > = {};
   for (const [key, val] of Object.entries(rawPhases)) {
     const phase = asRecord(val);
     phases[key] = {
       ...phase,
       enabled: phase.enabled === true,
-      cron: asString(phase.cron, ''),
+      cron: asString(phase.cron, ""),
     };
   }
   const embedding = asRecord(record.embedding);
   return {
-    agentId: asString(record.agentId, ''),
-    provider: asString(record.provider, ''),
+    agentId: asString(record.agentId, ""),
+    provider: asString(record.provider, ""),
     embedding: { ok: embedding.ok === true },
     dreaming: {
       enabled: dreaming.enabled === true,
@@ -764,9 +847,9 @@ export function formatTokenCount(tokens: number, trimZero = false): string {
       ? `${scaled.toFixed(0)}${suffix}`
       : `${scaled.toFixed(1)}${suffix}`;
   };
-  if (tokens >= 1_000_000_000) return fmt(tokens, 1_000_000_000, 'B');
-  if (tokens >= 1_000_000) return fmt(tokens, 1_000_000, 'M');
-  if (tokens >= 1_000) return fmt(tokens, 1_000, 'k');
+  if (tokens >= 1_000_000_000) return fmt(tokens, 1_000_000_000, "B");
+  if (tokens >= 1_000_000) return fmt(tokens, 1_000_000, "M");
+  if (tokens >= 1_000) return fmt(tokens, 1_000, "k");
   return String(tokens);
 }
 
@@ -775,7 +858,7 @@ export function formatTokenCount(tokens: number, trimZero = false): string {
 // ---------------------------------------------------------------------------
 
 /** Valid progress-card step statuses (unknown raw statuses default to `pending`). */
-const PROGRESS_CARD_STATUSES = new Set(['pending', 'in_progress', 'completed']);
+const PROGRESS_CARD_STATUSES = new Set(["pending", "in_progress", "completed"]);
 
 /**
  * Build an optional spread object `{ [key]: value }` when `value` is a non-empty
@@ -787,7 +870,7 @@ function optionalNonEmptyString<K extends string>(
   key: K,
   value: unknown,
 ): { [P in K]?: string } {
-  return typeof value === 'string' && value.length > 0
+  return typeof value === "string" && value.length > 0
     ? ({ [key]: value } as { [P in K]?: string })
     : ({} as { [P in K]?: string });
 }
@@ -810,7 +893,7 @@ function optionalNonEmptyString<K extends string>(
  */
 export function normalizeProgressCard(
   payload: unknown,
-  fallbackSessionKey = '',
+  fallbackSessionKey = "",
 ): ProgressCard | null {
   const record = asRecord(payload);
   const sessionKey = asString(record.sessionKey, fallbackSessionKey);
@@ -818,24 +901,311 @@ export function normalizeProgressCard(
 
   const rawSteps = Array.isArray(record.steps) ? record.steps : [];
   const steps = rawSteps.flatMap((entry) => {
-    if (typeof entry !== 'object' || entry === null) return []; // skip malformed
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
     const rec = entry as Record<string, unknown>;
-    const step = typeof rec.step === 'string' ? rec.step : '';
+    const step = typeof rec.step === "string" ? rec.step : "";
     if (step.length === 0) return []; // skip malformed
     const status =
-      typeof rec.status === 'string' && PROGRESS_CARD_STATUSES.has(rec.status)
-        ? (rec.status as ProgressCard['steps'][number]['status'])
-        : 'pending';
+      typeof rec.status === "string" && PROGRESS_CARD_STATUSES.has(rec.status)
+        ? (rec.status as ProgressCard["steps"][number]["status"])
+        : "pending";
     return [{ step, status }];
   });
 
   return {
     sessionKey,
-    ...optionalNonEmptyString('agentId', record.agentId),
-    ...optionalNonEmptyString('title', record.title),
+    ...optionalNonEmptyString("agentId", record.agentId),
+    ...optionalNonEmptyString("title", record.title),
     steps,
-    ...optionalNonEmptyString('updatedAt', record.updatedAt),
+    ...optionalNonEmptyString("updatedAt", record.updatedAt),
   };
+}
+
+// ---------------------------------------------------------------------------
+// RPC normalizers — Phase 3 read-only panels (gateway ≥ 2026.9)
+// ---------------------------------------------------------------------------
+
+/** Format a byte count as GB (one decimal, `n/a` for absent/invalid values). */
+export function formatBytesToGb(bytes: unknown): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0)
+    return "n/a";
+  const gb = bytes / 1_000_000_000;
+  return gb >= 100 ? `${Math.round(gb)}GB` : `${gb.toFixed(1)}GB`;
+}
+
+/**
+ * Extract a tolerant list from an RPC payload that may be a bare array or an
+ * object wrapping one under a common key (`tasks`, `items`, `entries`,
+ * `nodes`, `events`, `lanes`, `entries`, `proposals`, ...). Returns `null` when
+ * no array can be found so callers can distinguish "absent" from "empty".
+ */
+function tolerantList(payload: unknown, keys: string[]): unknown[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  const record = payload as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+  }
+  return null;
+}
+
+/**
+ * Normalize a `tasks.list` RPC response into {@link TaskLedgerEntry} rows.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `tasks`/`items`/`entries`. Per task: `name` falls back to `title` then `id`;
+ * unrecognized `status` strings default to `unknown`; `priority` is kept only
+ * when a string. Malformed entries are skipped.
+ */
+export function normalizeTaskLedger(payload: unknown): TaskLedgerEntry[] {
+  const raw = tolerantList(payload, ["tasks", "items", "entries"]) ?? [];
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const id = asString(
+      rec.id,
+      asString(rec.name, asString(rec.title, `task-${index}`)),
+    );
+    const name = asString(rec.name, asString(rec.title, "")) || undefined;
+    const title = asString(rec.title, "") || undefined;
+    const status = asString(rec.status, "unknown");
+    const priority = asString(rec.priority, "") || undefined;
+    return [
+      {
+        id,
+        ...(name ? { name } : {}),
+        ...(title ? { title } : {}),
+        status,
+        ...(priority ? { priority } : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * Normalize a `sessions.usage.timeseries` RPC response into
+ * {@link UsageTimeseriesEntry} buckets.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `timeseries`/`buckets`/`items`. Per bucket: `ts` (falls back to `date`) and
+ * numeric `tokens`/`cost` when present; malformed entries are skipped.
+ */
+export function normalizeUsageTimeseries(
+  payload: unknown,
+): UsageTimeseriesEntry[] {
+  const raw = tolerantList(payload, ["timeseries", "buckets", "items"]) ?? [];
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const ts = asString(rec.ts, asString(rec.date, ""));
+    if (ts.length === 0) return []; // skip malformed — a bucket without a label renders nothing
+    const tokens = asNumberOrNull(rec.tokens) ?? undefined;
+    const cost = asNumberOrNull(rec.cost) ?? undefined;
+    const fallbackTs = ts || `bucket-${index}`;
+    return [
+      {
+        ts: fallbackTs,
+        ...(tokens !== undefined ? { tokens } : {}),
+        ...(cost !== undefined ? { cost } : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * Normalize a `node.list` RPC response into {@link NodeFleetEntry} rows.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `nodes`/`items`/`list`. Per node: `nodeId` falls back to `name`;
+ * `connected` is only kept when a boolean; `hostStats` is kept when the
+ * nested object carries any recognized field. Malformed entries are skipped.
+ */
+export function normalizeNodeFleet(payload: unknown): NodeFleetEntry[] {
+  const raw = tolerantList(payload, ["nodes", "items", "list"]) ?? [];
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const nodeId = asString(
+      rec.nodeId,
+      asString(rec.id, asString(rec.name, `node-${index}`)),
+    );
+    const name = asString(rec.name, "") || undefined;
+    const platform = asString(rec.platform, "") || undefined;
+    const version = asString(rec.version, "") || undefined;
+    const connected =
+      typeof rec.connected === "boolean" ? rec.connected : undefined;
+    const lastSeenAtMs =
+      typeof rec.lastSeenAtMs === "number" ? rec.lastSeenAtMs : undefined;
+    const stats =
+      typeof rec.hostStats === "object" && rec.hostStats !== null
+        ? (rec.hostStats as Record<string, unknown>)
+        : {};
+    const cpuCount =
+      typeof stats.cpuCount === "number" ? stats.cpuCount : undefined;
+    const memoryTotalBytes =
+      typeof stats.memoryTotalBytes === "number"
+        ? stats.memoryTotalBytes
+        : undefined;
+    const memoryFreeBytes =
+      typeof stats.memoryFreeBytes === "number"
+        ? stats.memoryFreeBytes
+        : undefined;
+    const hostStats =
+      cpuCount !== undefined ||
+      memoryTotalBytes !== undefined ||
+      memoryFreeBytes !== undefined
+        ? {
+            ...(cpuCount !== undefined ? { cpuCount } : {}),
+            ...(memoryTotalBytes !== undefined ? { memoryTotalBytes } : {}),
+            ...(memoryFreeBytes !== undefined ? { memoryFreeBytes } : {}),
+          }
+        : undefined;
+    return [
+      {
+        nodeId,
+        ...(name ? { name } : {}),
+        ...(platform ? { platform } : {}),
+        ...(version ? { version } : {}),
+        ...(connected !== undefined ? { connected } : {}),
+        ...(lastSeenAtMs !== undefined ? { lastSeenAtMs } : {}),
+        ...(hostStats ? { hostStats } : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * Normalize a `diagnostics.stability` RPC response into {@link StabilityEntry}
+ * rows.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `entries`/`lanes`/`events`. Per entry: `kind` falls back to `type`/`name`;
+ * `summary` falls back to `message`. Returns `undefined` when the payload has
+ * no parseable shape so the panel degrades to its empty state (never throws).
+ */
+export function normalizeStability(
+  payload: unknown,
+): StabilityEntry[] | undefined {
+  const raw = tolerantList(payload, ["entries", "lanes", "events"]);
+  if (raw === null) return undefined; // unparseable shape → empty state
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const kind = asString(rec.kind, asString(rec.type, asString(rec.name, "")));
+    if (kind.length === 0) return []; // skip malformed — no kind to render
+    const ts = asString(rec.ts, asString(rec.at, `#${index}`));
+    const summary =
+      asString(rec.summary, asString(rec.message, "")) || undefined;
+    return [{ ts, kind, ...(summary ? { summary } : {}) }];
+  });
+}
+
+/**
+ * Normalize an `audit.activity.list` RPC response into {@link AuditTimelineEntry}
+ * rows.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `entries`/`activity`/`audit`. Per entry: `actor` falls back to `agentId`,
+ * `action` to `kind`, `target` to `summary`; `outcome` is kept only when a
+ * string. Malformed entries are skipped.
+ */
+export function normalizeAuditTimeline(payload: unknown): AuditTimelineEntry[] {
+  const raw = tolerantList(payload, ["entries", "activity", "audit"]) ?? [];
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const ts = asString(rec.ts, asString(rec.at, `#${index}`));
+    const actor = asString(rec.actor, asString(rec.agentId, "")) || undefined;
+    const action = asString(rec.action, asString(rec.kind, ""));
+    if (action.length === 0) return []; // skip malformed — no action to render
+    const target = asString(rec.target, asString(rec.summary, "")) || undefined;
+    const outcome = asString(rec.outcome, "") || undefined;
+    return [
+      {
+        ts,
+        ...(actor ? { actor } : {}),
+        action,
+        ...(target ? { target } : {}),
+        ...(outcome ? { outcome } : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * Normalize a `config.schema` RPC response into a map of key →
+ * {@link ConfigSchemaEntry}.
+ *
+ * Tolerant by design — the payload must be an object map; per value, only
+ * string `type`/`description`/`path` fields and any `default` are kept.
+ * Returns `undefined` for non-object payloads so the panel degrades to its
+ * empty state (never throws).
+ */
+export function normalizeConfigSchema(
+  payload: unknown,
+): Record<string, ConfigSchemaEntry> | undefined {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
+    return undefined;
+  }
+  const result: Record<string, ConfigSchemaEntry> = {};
+  for (const [key, raw] of Object.entries(payload as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null) continue; // skip malformed
+    const rec = raw as Record<string, unknown>;
+    const type = asString(rec.type, "") || undefined;
+    const description = asString(rec.description, "") || undefined;
+    const path = asString(rec.path, "") || undefined;
+    const hasDefault = "default" in rec;
+    result[key] = {
+      ...(type ? { type } : {}),
+      ...(description ? { description } : {}),
+      ...(hasDefault ? { default: rec.default } : {}),
+      ...(path ? { path } : {}),
+    };
+  }
+  return result;
+}
+
+/** Valid skill-proposal statuses (unknown raw statuses default to `unknown`). */
+const SKILL_PROPOSAL_STATUSES = new Set(["pending", "approved", "rejected"]);
+
+/**
+ * Normalize a `skills.proposals.list` RPC response into {@link SkillProposalEntry}
+ * rows.
+ *
+ * Tolerant by design — accepts a bare array or an object wrapping one under
+ * `proposals`/`items`. Per proposal: `id` falls back to `name`; unrecognized
+ * `status` values default to `unknown`; `verdict` falls back to
+ * `securityVerdict`/`verdict` when a string. Malformed entries are skipped.
+ */
+export function normalizeSkillProposals(
+  payload: unknown,
+): SkillProposalEntry[] {
+  const raw = tolerantList(payload, ["proposals", "items", "entries"]) ?? [];
+  return raw.flatMap((entry, index) => {
+    if (typeof entry !== "object" || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const id = asString(rec.id, asString(rec.name, `proposal-${index}`));
+    const status = asString(
+      rec.status,
+      "unknown",
+    ) as SkillProposalEntry["status"];
+    const author = asString(rec.author, "") || undefined;
+    const verdict =
+      asString(rec.verdict, asString(rec.securityVerdict, "")) || undefined;
+    return [
+      {
+        id,
+        status: SKILL_PROPOSAL_STATUSES.has(status) ? status : "unknown",
+        ...(author ? { author } : {}),
+        ...(verdict ? { verdict } : {}),
+      },
+    ];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -850,10 +1220,33 @@ export function normalizeProgressCard(
  * @returns Normalized config response object.
  */
 const CONFIG_SAFE_KEYS = new Set([
-  'model', 'temperature', 'maxTokens', 'provider', 'region', 'apiKey', 'baseUrl',
-  'topP', 'topK', 'frequencyPenalty', 'presencePenalty', 'stop', 'systemPrompt',
-  'responseFormat', 'seed', 'logprobs', 'tools', 'toolChoice', 'parallelToolCalls',
-  'port', 'debug', 'agents', 'host', 'version', 'uptime', 'pid', 'status',
+  "model",
+  "temperature",
+  "maxTokens",
+  "provider",
+  "region",
+  "apiKey",
+  "baseUrl",
+  "topP",
+  "topK",
+  "frequencyPenalty",
+  "presencePenalty",
+  "stop",
+  "systemPrompt",
+  "responseFormat",
+  "seed",
+  "logprobs",
+  "tools",
+  "toolChoice",
+  "parallelToolCalls",
+  "port",
+  "debug",
+  "agents",
+  "host",
+  "version",
+  "uptime",
+  "pid",
+  "status",
 ]);
 
 export function normalizeConfigData(payload: unknown): ConfigResponse {
@@ -877,16 +1270,18 @@ export function normalizeConfigData(payload: unknown): ConfigResponse {
  * @returns Normalized array of file status entries.
  */
 export function normalizeFileStatus(payload: unknown): FileStatusEntry[] {
-  const source = Array.isArray(payload) ? payload : unwrapEnvelope(payload, 'files');
+  const source = Array.isArray(payload)
+    ? payload
+    : unwrapEnvelope(payload, "files");
   return source.map((entry) => {
     const rec = asRecord(entry);
     return {
       ...rec,
-      path: asString(rec.path, 'unknown'),
-      status: asString(rec.status, 'unknown'),
-      ...optionalString('language', rec.language),
-      ...optionalNumber('sizeBytes', rec.sizeBytes),
-      ...optionalNumber('modifiedAt', rec.modifiedAt),
+      path: asString(rec.path, "unknown"),
+      status: asString(rec.status, "unknown"),
+      ...optionalString("language", rec.language),
+      ...optionalNumber("sizeBytes", rec.sizeBytes),
+      ...optionalNumber("modifiedAt", rec.modifiedAt),
     };
   });
 }
@@ -908,39 +1303,48 @@ export function normalizeFileStatus(payload: unknown): FileStatusEntry[] {
  * @param payload - Raw gateway sessions.list response to normalize.
  * @returns Normalized array of session detail entries.
  */
-export function normalizeSessionDetails(payload: unknown): SessionDetailEntry[] {
+export function normalizeSessionDetails(
+  payload: unknown,
+): SessionDetailEntry[] {
   if (Array.isArray(payload)) {
-    return payload.map((entry) => normalizeSingleSessionDetail('', entry));
+    return payload.map((entry) => normalizeSingleSessionDetail("", entry));
   }
   const record = asRecord(payload);
   // Unwrap sessions.list envelope: { sessions: [...] }
   if (Array.isArray(record.sessions)) {
-    return (record.sessions as unknown[]).map((entry) => normalizeSingleSessionDetail('', entry));
+    return (record.sessions as unknown[]).map((entry) =>
+      normalizeSingleSessionDetail("", entry),
+    );
   }
   // Legacy map shape: { sessionKey: { ... } }
-  return Object.entries(record).map(([key, val]) => normalizeSingleSessionDetail(key, val));
+  return Object.entries(record).map(([key, val]) =>
+    normalizeSingleSessionDetail(key, val),
+  );
 }
 
 /** Normalize a single session detail entry (shared by array, envelope, and map paths). */
-function normalizeSingleSessionDetail(fallbackKey: string, entry: unknown): SessionDetailEntry {
+function normalizeSingleSessionDetail(
+  fallbackKey: string,
+  entry: unknown,
+): SessionDetailEntry {
   const rec = asRecord(entry);
-  const key = asString(rec.key, fallbackKey || 'unknown');
+  const key = asString(rec.key, fallbackKey || "unknown");
   // Derive agentId from key if not explicit (e.g. "agent:ceo:main" → "ceo")
   const agentId = asString(
     rec.agentId,
-    key.startsWith('agent:') ? key.split(':')[1] ?? '' : '',
+    key.startsWith("agent:") ? (key.split(":")[1] ?? "") : "",
   );
   return {
     ...rec,
     key,
     agentId,
-    status: asString(rec.status, 'unknown'),
-    ...optionalString('displayName', rec.displayName),
-    ...optionalString('kind', rec.kind),
-    ...optionalString('channel', rec.channel),
-    ...optionalNumber('messageCount', rec.messageCount),
-    ...optionalNumber('tokenCount', rec.tokenCount),
-    ...optionalNumber('lastActivityAt', rec.lastActivityAt),
-    ...optionalNumber('createdAt', rec.createdAt),
+    status: asString(rec.status, "unknown"),
+    ...optionalString("displayName", rec.displayName),
+    ...optionalString("kind", rec.kind),
+    ...optionalString("channel", rec.channel),
+    ...optionalNumber("messageCount", rec.messageCount),
+    ...optionalNumber("tokenCount", rec.tokenCount),
+    ...optionalNumber("lastActivityAt", rec.lastActivityAt),
+    ...optionalNumber("createdAt", rec.createdAt),
   };
 }

@@ -493,6 +493,210 @@ describe("gateway server service initialization lifecycle", () => {
     });
     expect(service.getSnapshot().updateAvailable).toBeNull();
   });
+
+  // --- Progress cards (agent-scoped, gateway >= 2026.9) ---
+
+  it("fetches progressCard.get with { sessionKey } params when capability + method are advertised", async () => {
+    const service = new GatewayServerService() as unknown as {
+      refreshData: () => Promise<void>;
+      getSnapshot: () => {
+        progressCards: Record<
+          string,
+          {
+            sessionKey: string;
+            title?: string;
+            steps: Array<{ step: string; status: string }>;
+          }
+        >;
+      };
+      client: {
+        connectionState: string;
+        availableMethods: string[];
+        helloOk?: {
+          features: { methods: string[]; capabilities: string[] };
+        };
+        call: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    const advertised = [
+      "status",
+      "agents.list",
+      "sessions.list",
+      "cron.list",
+      "cron.runs",
+      "models.list",
+      "health",
+      "system-presence",
+      "usage.cost",
+      "usage.status",
+      "tools.catalog",
+      "skills.status",
+      "channels.status",
+      "cron.status",
+      "doctor.memory.status",
+      "config.get",
+      "agents.files.list",
+      "progressCard.get",
+    ];
+
+    const call =
+      vi.fn<
+        (method: string, params?: Record<string, unknown>) => Promise<unknown>
+      >();
+    call.mockImplementation((method: string) => {
+      if (method === "sessions.list") {
+        return Promise.resolve({
+          sessions: [
+            { key: "agent:ceo:main", agentId: "ceo", lastActivityAt: 1000 },
+            { key: "agent:ops:main", agentId: "ops", lastActivityAt: 2000 },
+          ],
+        });
+      }
+      if (method === "progressCard.get") {
+        return Promise.resolve({
+          sessionKey: "agent:ceo:main",
+          title: "Migration",
+          steps: [{ step: "fix deps", status: "in_progress" }],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    service.client = {
+      connectionState: "connected",
+      availableMethods: advertised,
+      helloOk: {
+        features: {
+          methods: advertised,
+          capabilities: ["progress-card-agent-scope-v1"],
+        },
+      },
+      call,
+    };
+
+    await service.refreshData();
+
+    // One call per top session key, each carrying its { sessionKey } params.
+    expect(call).toHaveBeenCalledWith("progressCard.get", {
+      sessionKey: "agent:ceo:main",
+    });
+    expect(call).toHaveBeenCalledWith("progressCard.get", {
+      sessionKey: "agent:ops:main",
+    });
+    expect(service.getSnapshot().progressCards["agent:ceo:main"]?.title).toBe(
+      "Migration",
+    );
+  });
+
+  it("does NOT call progressCard.get when the capability is absent", async () => {
+    const service = new GatewayServerService() as unknown as {
+      refreshData: () => Promise<void>;
+      client: {
+        connectionState: string;
+        availableMethods: string[];
+        helloOk?: {
+          features: { methods: string[]; capabilities: string[] };
+        };
+        call: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    // Method advertised but the agent-scope capability is missing → gate holds.
+    const methods = ["status", "sessions.list", "progressCard.get"];
+    const call = vi.fn<(method: string) => Promise<unknown>>();
+    call.mockResolvedValue({});
+
+    service.client = {
+      connectionState: "connected",
+      availableMethods: methods,
+      helloOk: { features: { methods, capabilities: ["agent-kind"] } },
+      call,
+    };
+
+    await service.refreshData();
+    const progressCalls = call.mock.calls.filter(
+      ([method]) => method === "progressCard.get",
+    );
+    expect(progressCalls).toHaveLength(0);
+  });
+
+  // --- activeRunIds snapshot/delta semantics ---
+
+  it("applyActiveRunIdsDelta: array replaces, omission retains, null clears", () => {
+    const service = new GatewayServerService() as unknown as {
+      handleGatewayEvent: (event: {
+        type: "event";
+        event: string;
+        payload?: unknown;
+      }) => void;
+      getSnapshot: () => { activeRunIds: string[] };
+    };
+
+    // Array → replaced.
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { activeRunIds: ["agent:ceo:main", "agent:ops:main", 42] },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([
+      "agent:ceo:main",
+      "agent:ops:main",
+    ]);
+
+    // Field omitted → no change — previous value retained (sessions.changed
+    // fires for reasons unrelated to runs; do not clear).
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { sessions: 3 },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([
+      "agent:ceo:main",
+      "agent:ops:main",
+    ]);
+
+    // Explicit null → no active runs, cleared.
+    service.handleGatewayEvent({
+      type: "event",
+      event: "sessions.changed",
+      payload: { activeRunIds: null },
+    });
+    expect(service.getSnapshot().activeRunIds).toEqual([]);
+
+    // Non-object payload → ignored entirely.
+    service.handleGatewayEvent({ type: "event", event: "sessions.changed" });
+    expect(service.getSnapshot().activeRunIds).toEqual([]);
+  });
+
+  it("progressCard.changed only schedules invalidation — cache untouched by payload", async () => {
+    vi.useFakeTimers();
+    try {
+      const service = new GatewayServerService() as unknown as {
+        handleGatewayEvent: (event: {
+          type: "event";
+          event: string;
+          payload?: unknown;
+        }) => void;
+        getSnapshot: () => {
+          progressCards: Record<string, unknown>;
+        };
+      };
+
+      const before = service.getSnapshot().progressCards;
+      service.handleGatewayEvent({
+        type: "event",
+        event: "progressCard.changed",
+        payload: { sessionKey: "agent:ceo:main", steps: "garbage-shape" },
+      });
+      // Invalidation-only: the event payload must not patch the cache.
+      // (getSnapshot structuredClones, so compare by value, not reference.)
+      expect(service.getSnapshot().progressCards).toEqual(before);
+      expect(service.getSnapshot().progressCards).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("parseMaxProtocol (OPENCLAW_GATEWAY_MAX_PROTOCOL)", () => {

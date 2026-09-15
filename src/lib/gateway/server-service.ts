@@ -19,8 +19,10 @@
 import { GatewayClient } from "./client";
 import {
   normalizeAgents,
+  normalizeAuditTimeline,
   normalizeChannelsStatus,
   normalizeConfigData,
+  normalizeConfigSchema,
   normalizeCronJobs,
   normalizeCronRuns,
   normalizeCronScheduler,
@@ -28,26 +30,42 @@ import {
   normalizeHealth,
   normalizeMemoryStatus,
   normalizeModels,
+  normalizeNodeFleet,
   normalizePresence,
   normalizeProgressCard,
   normalizeSessionDetails,
   normalizeSessions,
+  normalizeSkillProposals,
   normalizeSkillsStatus,
+  normalizeStability,
   normalizeStatus,
+  normalizeTaskLedger,
   normalizeToolsCatalog,
   normalizeUsageCost,
   normalizeUsageStatus,
+  normalizeUsageTimeseries,
   countSessionsByAgent,
 } from "../dashboard/adapters";
 import type { EventFrame, ConnectionState } from "./types";
 import type {
+  AuditTimelineEntry,
+  ConfigSchemaEntry,
   FileStatusEntry,
   ConfigResponse,
+  NodeFleetEntry,
   ProgressCard,
   SessionDetailEntry,
+  SkillProposalEntry,
+  StabilityEntry,
+  TaskLedgerEntry,
+  UsageTimeseriesEntry,
 } from "./types";
 import { CLIENT_VERSION } from "./protocol";
-import { DASHBOARD_CAPABILITIES, hasCapability, hasMethod } from "./capabilities";
+import {
+  DASHBOARD_CAPABILITIES,
+  hasCapability,
+  hasMethod,
+} from "./capabilities";
 
 /** Gateway capability that gates agent-scoped progress cards (OpenClaw 2026.9). */
 const PROGRESS_CARD_CAPABILITY = "progress-card-agent-scope-v1";
@@ -153,6 +171,20 @@ export interface DashboardSnapshot {
   progressCards: Record<string, ProgressCard>;
   /** Session keys with an active agent run — `activeRunIds` snapshot/delta events (omission = no change, null = none). */
   activeRunIds: string[];
+  /** Task ledger rows from `tasks.list` (read-only panel, gateway ≥ 2026.9). */
+  taskLedger: TaskLedgerEntry[] | null;
+  /** Usage/cost timeseries buckets from `sessions.usage.timeseries` (read-only panel). */
+  usageTimeseries: UsageTimeseriesEntry[] | null;
+  /** Node fleet rows from `node.list` (read-only panel). */
+  nodeFleet: NodeFleetEntry[] | null;
+  /** Gateway stability event feed from `diagnostics.stability` (read-only panel). */
+  stability: StabilityEntry[] | null;
+  /** Audit timeline rows from `audit.activity.list` (read-only panel). */
+  auditTimeline: AuditTimelineEntry[] | null;
+  /** Config schema map from `config.schema` (read-only private panel). */
+  configSchema: Record<string, ConfigSchemaEntry> | null;
+  /** Skill proposal queue from `skills.proposals.list` (read-only private panel). */
+  skillProposals: SkillProposalEntry[] | null;
 }
 
 /** A panel-visible hint that an RPC failed only for lack of operator scopes. */
@@ -231,6 +263,13 @@ export class GatewayServerService {
     scopeHints: [],
     progressCards: {},
     activeRunIds: [],
+    taskLedger: null,
+    usageTimeseries: null,
+    nodeFleet: null,
+    stability: null,
+    auditTimeline: null,
+    configSchema: null,
+    skillProposals: null,
   };
 
   constructor() {
@@ -651,9 +690,7 @@ export class GatewayServerService {
         .slice(0, limit)
         .map((d) => d.key);
     }
-    return this.cache.sessions
-      .slice(0, limit)
-      .map((session) => session.key);
+    return this.cache.sessions.slice(0, limit).map((session) => session.key);
   }
 
   /** Fetch all dashboard data via RPC calls. */
@@ -840,10 +877,8 @@ export class GatewayServerService {
             const raw = await this.callIfAvailable(PROGRESS_CARD_METHOD, {
               sessionKey,
             });
-            return this.safeNormalize(
-              "progressCard",
-              raw,
-              (d) => normalizeProgressCard(d, sessionKey),
+            return this.safeNormalize("progressCard", raw, (d) =>
+              normalizeProgressCard(d, sessionKey),
             );
           }),
         );
@@ -853,6 +888,74 @@ export class GatewayServerService {
         }
         this.cache.progressCards = cards;
       }
+
+      // --- Phase 3 read-only panels (gateway ≥ 2026.9) ---
+      // Gated individually by callIfAvailable on the advertised method
+      // surface; absent methods yield null → panels render empty state.
+      const [
+        taskLedger,
+        usageTimeseries,
+        nodeFleet,
+        stability,
+        auditTimeline,
+        configSchema,
+        skillProposals,
+      ] = await Promise.all([
+        this.callIfAvailable("tasks.list"),
+        this.callIfAvailable("sessions.usage.timeseries"),
+        this.callIfAvailable("node.list"),
+        this.callIfAvailable("diagnostics.stability"),
+        this.callIfAvailable("audit.activity.list"),
+        this.callIfAvailable("config.schema"),
+        this.callIfAvailable("skills.proposals.list"),
+      ]);
+
+      const nTaskLedger = this.safeNormalize(
+        "taskLedger",
+        taskLedger,
+        normalizeTaskLedger,
+      );
+      const nUsageTimeseries = this.safeNormalize(
+        "usageTimeseries",
+        usageTimeseries,
+        normalizeUsageTimeseries,
+      );
+      const nNodeFleet = this.safeNormalize(
+        "nodeFleet",
+        nodeFleet,
+        normalizeNodeFleet,
+      );
+      const nStability = this.safeNormalize(
+        "stability",
+        stability,
+        normalizeStability,
+      );
+      const nAuditTimeline = this.safeNormalize(
+        "auditTimeline",
+        auditTimeline,
+        normalizeAuditTimeline,
+      );
+      const nConfigSchema = this.safeNormalize(
+        "configSchema",
+        configSchema,
+        normalizeConfigSchema,
+      );
+      const nSkillProposals = this.safeNormalize(
+        "skillProposals",
+        skillProposals,
+        normalizeSkillProposals,
+      );
+
+      if (nTaskLedger !== undefined) this.cache.taskLedger = nTaskLedger;
+      if (nUsageTimeseries !== undefined)
+        this.cache.usageTimeseries = nUsageTimeseries;
+      if (nNodeFleet !== undefined) this.cache.nodeFleet = nNodeFleet;
+      if (nStability !== undefined) this.cache.stability = nStability;
+      if (nAuditTimeline !== undefined)
+        this.cache.auditTimeline = nAuditTimeline;
+      if (nConfigSchema !== undefined) this.cache.configSchema = nConfigSchema;
+      if (nSkillProposals !== undefined)
+        this.cache.skillProposals = nSkillProposals;
 
       this.notifySnapshotUpdated();
     } catch (err) {

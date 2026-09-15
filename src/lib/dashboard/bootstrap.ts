@@ -8,11 +8,17 @@
  * @module dashboard/bootstrap
  */
 
-import { countSessionsByAgent } from './adapters';
-import { PRIVATE_DASHBOARD_PANELS, PUBLIC_DASHBOARD_PANELS, computePanelCount, type DashboardPanelDefinition } from './panel-config';
+import { countSessionsByAgent } from "./adapters";
+import {
+  PRIVATE_DASHBOARD_PANELS,
+  PUBLIC_DASHBOARD_PANELS,
+  computePanelCount,
+  type DashboardPanelDefinition,
+} from "./panel-config";
 import {
   connectionClass,
   renderAgentRows,
+  renderAuditTimelineRows,
   renderChannelsStatusRows,
   renderConfigRows,
   renderCronRows,
@@ -22,6 +28,7 @@ import {
   renderHealthRows,
   renderMemoryStatusRows,
   renderModelRows,
+  renderNodeFleetRows,
   renderPermissionActivityRows,
   renderPresenceRows,
   renderProgressCardRows,
@@ -30,14 +37,19 @@ import {
   renderSessionRows,
   renderSkeletonRows,
   renderSkillsRows,
+  renderSkillProposalRows,
   renderStatusRows,
+  renderStabilityRows,
+  renderTaskLedgerRows,
   renderToolCatalogRows,
   renderToolExecutionRows,
   renderUsageCostRows,
-} from './renderers';
-import { EVENT_BUCKETS } from './renderers/shared';
-import { DashboardStore } from './store';
-import type { DashboardSnapshotPayload, DashboardState } from './store';
+  renderConfigSchemaRows,
+  renderUsageTimeseriesRows,
+} from "./renderers";
+import { EVENT_BUCKETS } from "./renderers/shared";
+import { DashboardStore } from "./store";
+import type { DashboardSnapshotPayload, DashboardState } from "./store";
 
 export const BOOTSTRAP_CONFIG = {
   STALE_THRESHOLD_MS: 90_000,
@@ -45,17 +57,17 @@ export const BOOTSTRAP_CONFIG = {
   EVENT_BATCH_DEBOUNCE_MS: 500,
   MAX_EVENTS: 200,
   STALE_CHECK_INTERVAL_MS: 5_000,
-  PUBLIC_DASHBOARD_API_URL: '/api/public/dashboard.json',
-  PRIVATE_DASHBOARD_API_URL: '/api/private/dashboard.json',
-  PUBLIC_EVENTS_API_URL: '/api/public/events',
-  PRIVATE_EVENTS_API_URL: '/api/private/events',
-  PRIVATE_SESSION_API_URL: '/api/private/session',
+  PUBLIC_DASHBOARD_API_URL: "/api/public/dashboard.json",
+  PRIVATE_DASHBOARD_API_URL: "/api/private/dashboard.json",
+  PUBLIC_EVENTS_API_URL: "/api/public/events",
+  PRIVATE_EVENTS_API_URL: "/api/private/events",
+  PRIVATE_SESSION_API_URL: "/api/private/session",
 } as const;
 
 interface DashboardRootDataset {
   privateViewEnabled: boolean;
   privateConfigured: boolean;
-  accessMode: 'public' | 'token' | 'insecure';
+  accessMode: "public" | "token" | "insecure";
 }
 
 interface DashboardElements {
@@ -98,59 +110,75 @@ interface DashboardElements {
   fileTrackingListEl: HTMLElement | null;
   sessionDetailListEl: HTMLElement | null;
   progressCardListEl: HTMLElement | null;
+  taskLedgerListEl: HTMLElement | null;
+  usageTimeseriesListEl: HTMLElement | null;
+  nodeFleetListEl: HTMLElement | null;
+  stabilityListEl: HTMLElement | null;
+  auditTimelineListEl: HTMLElement | null;
+  configSchemaListEl: HTMLElement | null;
+  skillProposalsListEl: HTMLElement | null;
   updateAvailableBannerEl: HTMLElement | null;
   updateAvailableTextEl: HTMLElement | null;
   shutdownBannerEl: HTMLElement | null;
   shutdownTextEl: HTMLElement | null;
 }
 
-type MetadataPanelKey = DashboardPanelDefinition['key'];
+type MetadataPanelKey = DashboardPanelDefinition["key"];
 
 /** Panel renderer lookup — hoisted to module scope so it is allocated once, not per render. */
-const PANEL_RENDERERS: Record<MetadataPanelKey, (s: DashboardState) => string> = {
-  cronListEl: renderCronRows,
-  providerListEl: renderProviderRows,
-  sessionListEl: renderSessionRows,
-  modelListEl: renderModelRows,
-  healthListEl: renderHealthRows,
-  statusListEl: renderStatusRows,
-  presenceListEl: renderPresenceRows,
-  usageCostListEl: renderUsageCostRows,
-  toolCatalogListEl: renderToolCatalogRows,
-  skillsListEl: renderSkillsRows,
-  channelsStatusListEl: renderChannelsStatusRows,
-  cronSchedulerListEl: renderCronSchedulerRows,
-  memoryStatusListEl: renderMemoryStatusRows,
-  configListEl: renderConfigRows,
-  permissionActivityListEl: renderPermissionActivityRows,
-  toolExecutionListEl: renderToolExecutionRows,
-  fileTrackingListEl: renderFileTrackingRows,
-  sessionDetailListEl: renderSessionDetailRows,
-  progressCardListEl: (s) => renderProgressCardRows(s.progressCards, s.activeRunIds),
-};
+const PANEL_RENDERERS: Record<MetadataPanelKey, (s: DashboardState) => string> =
+  {
+    cronListEl: renderCronRows,
+    providerListEl: renderProviderRows,
+    sessionListEl: renderSessionRows,
+    modelListEl: renderModelRows,
+    healthListEl: renderHealthRows,
+    statusListEl: renderStatusRows,
+    presenceListEl: renderPresenceRows,
+    usageCostListEl: renderUsageCostRows,
+    toolCatalogListEl: renderToolCatalogRows,
+    skillsListEl: renderSkillsRows,
+    channelsStatusListEl: renderChannelsStatusRows,
+    cronSchedulerListEl: renderCronSchedulerRows,
+    memoryStatusListEl: renderMemoryStatusRows,
+    configListEl: renderConfigRows,
+    permissionActivityListEl: renderPermissionActivityRows,
+    toolExecutionListEl: renderToolExecutionRows,
+    fileTrackingListEl: renderFileTrackingRows,
+    sessionDetailListEl: renderSessionDetailRows,
+    progressCardListEl: (s) =>
+      renderProgressCardRows(s.progressCards, s.activeRunIds),
+    taskLedgerListEl: (s) => renderTaskLedgerRows(s.taskLedger),
+    usageTimeseriesListEl: (s) => renderUsageTimeseriesRows(s.usageTimeseries),
+    nodeFleetListEl: (s) => renderNodeFleetRows(s.nodeFleet),
+    stabilityListEl: (s) => renderStabilityRows(s.stability),
+    auditTimelineListEl: (s) => renderAuditTimelineRows(s.auditTimeline),
+    configSchemaListEl: (s) => renderConfigSchemaRows(s.configSchema),
+    skillProposalsListEl: (s) => renderSkillProposalRows(s.skillProposals),
+  };
 
 function queryElements(): DashboardElements {
   const elements: DashboardElements = {
-    rootEl: document.querySelector('#gateway-dashboard-root'),
-    stateEl: document.querySelector('#gateway-connection-state'),
-    agentsEl: document.querySelector('#gateway-agents'),
-    sessionsEl: document.querySelector('#gateway-sessions'),
-    updatedEl: document.querySelector('#gateway-updated'),
-    messageEl: document.querySelector('#gateway-message'),
-    agentListEl: document.querySelector('#gateway-agent-list'),
-    eventListEl: document.querySelector('#gateway-event-list'),
-    eventFiltersEl: document.querySelector('#gateway-event-filters'),
-    retryButtonEl: document.querySelector('#gateway-retry'),
-    retryNoteEl: document.querySelector('#gateway-retry-note'),
-    staleBadgeEl: document.querySelector('#gateway-stale-badge'),
-    reconnectCountEl: document.querySelector('#gateway-reconnect-count'),
-    errorCountEl: document.querySelector('#gateway-error-count'),
-    heroAgentCountEl: document.querySelector('#hero-agent-count'),
-    heroStatusDotEl: document.querySelector('#hero-status-dot'),
-    heroStatusTextEl: document.querySelector('#hero-status-text'),
-    privateViewFormEl: document.querySelector('#private-view-form'),
-    privateViewTokenEl: document.querySelector('#private-view-token'),
-    privateViewLockEl: document.querySelector('#private-view-lock'),
+    rootEl: document.querySelector("#gateway-dashboard-root"),
+    stateEl: document.querySelector("#gateway-connection-state"),
+    agentsEl: document.querySelector("#gateway-agents"),
+    sessionsEl: document.querySelector("#gateway-sessions"),
+    updatedEl: document.querySelector("#gateway-updated"),
+    messageEl: document.querySelector("#gateway-message"),
+    agentListEl: document.querySelector("#gateway-agent-list"),
+    eventListEl: document.querySelector("#gateway-event-list"),
+    eventFiltersEl: document.querySelector("#gateway-event-filters"),
+    retryButtonEl: document.querySelector("#gateway-retry"),
+    retryNoteEl: document.querySelector("#gateway-retry-note"),
+    staleBadgeEl: document.querySelector("#gateway-stale-badge"),
+    reconnectCountEl: document.querySelector("#gateway-reconnect-count"),
+    errorCountEl: document.querySelector("#gateway-error-count"),
+    heroAgentCountEl: document.querySelector("#hero-agent-count"),
+    heroStatusDotEl: document.querySelector("#hero-status-dot"),
+    heroStatusTextEl: document.querySelector("#hero-status-text"),
+    privateViewFormEl: document.querySelector("#private-view-form"),
+    privateViewTokenEl: document.querySelector("#private-view-token"),
+    privateViewLockEl: document.querySelector("#private-view-lock"),
     statusListEl: null,
     healthListEl: null,
     presenceListEl: null,
@@ -170,20 +198,36 @@ function queryElements(): DashboardElements {
     fileTrackingListEl: null,
     sessionDetailListEl: null,
     progressCardListEl: null,
+    taskLedgerListEl: null,
+    usageTimeseriesListEl: null,
+    nodeFleetListEl: null,
+    stabilityListEl: null,
+    auditTimelineListEl: null,
+    configSchemaListEl: null,
+    skillProposalsListEl: null,
     updateAvailableBannerEl: null,
     updateAvailableTextEl: null,
     shutdownBannerEl: null,
     shutdownTextEl: null,
   };
 
-  for (const panel of [...PUBLIC_DASHBOARD_PANELS, ...PRIVATE_DASHBOARD_PANELS]) {
-    elements[panel.key as MetadataPanelKey] = document.querySelector(`#${panel.id}`);
+  for (const panel of [
+    ...PUBLIC_DASHBOARD_PANELS,
+    ...PRIVATE_DASHBOARD_PANELS,
+  ]) {
+    elements[panel.key as MetadataPanelKey] = document.querySelector(
+      `#${panel.id}`,
+    );
   }
 
-  elements.updateAvailableBannerEl = document.querySelector('#update-available-banner');
-  elements.updateAvailableTextEl = document.querySelector('#update-available-text');
-  elements.shutdownBannerEl = document.querySelector('#shutdown-banner');
-  elements.shutdownTextEl = document.querySelector('#shutdown-text');
+  elements.updateAvailableBannerEl = document.querySelector(
+    "#update-available-banner",
+  );
+  elements.updateAvailableTextEl = document.querySelector(
+    "#update-available-text",
+  );
+  elements.shutdownBannerEl = document.querySelector("#shutdown-banner");
+  elements.shutdownTextEl = document.querySelector("#shutdown-text");
 
   return elements;
 }
@@ -193,17 +237,24 @@ function setText(node: HTMLElement | null, value: string): void {
 }
 
 function readRootDataset(rootEl: HTMLElement | null): DashboardRootDataset {
-  const mode = rootEl?.getAttribute('data-access-mode');
+  const mode = rootEl?.getAttribute("data-access-mode");
   return {
-    privateViewEnabled: rootEl?.getAttribute('data-private-view-enabled') === 'true',
-    privateConfigured: rootEl?.getAttribute('data-private-configured') === 'true',
-    accessMode: mode === 'token' || mode === 'insecure' ? mode : 'public',
+    privateViewEnabled:
+      rootEl?.getAttribute("data-private-view-enabled") === "true",
+    privateConfigured:
+      rootEl?.getAttribute("data-private-configured") === "true",
+    accessMode: mode === "token" || mode === "insecure" ? mode : "public",
   };
 }
 
-function applySnapshotToStore(store: DashboardStore, snapshot: DashboardSnapshotPayload, fallbackState?: DashboardState): void {
+function applySnapshotToStore(
+  store: DashboardStore,
+  snapshot: DashboardSnapshotPayload,
+  fallbackState?: DashboardState,
+): void {
   store.applySnapshot({
-    connectionState: snapshot.connectionState ?? fallbackState?.connectionState ?? 'idle',
+    connectionState:
+      snapshot.connectionState ?? fallbackState?.connectionState ?? "idle",
     lastSuccessfulSnapshotAt: snapshot.lastSuccessfulSnapshotAt,
     stale: snapshot.stale,
     reconnectCount: snapshot.reconnectCount,
@@ -232,6 +283,13 @@ function applySnapshotToStore(store: DashboardStore, snapshot: DashboardSnapshot
     activeRunIds: snapshot.activeRunIds ?? [],
     gatewayCapabilities: snapshot.gatewayCapabilities ?? [],
     scopeHints: snapshot.scopeHints ?? [],
+    taskLedger: snapshot.taskLedger ?? null,
+    usageTimeseries: snapshot.usageTimeseries ?? null,
+    nodeFleet: snapshot.nodeFleet ?? null,
+    stability: snapshot.stability ?? null,
+    auditTimeline: snapshot.auditTimeline ?? null,
+    configSchema: snapshot.configSchema ?? null,
+    skillProposals: snapshot.skillProposals ?? null,
   });
 }
 
@@ -243,7 +301,9 @@ interface GatewayDashboardOptions {
   privateSessionApiUrl?: string;
 }
 
-export function initGatewayDashboard(options: GatewayDashboardOptions = {}): void {
+export function initGatewayDashboard(
+  options: GatewayDashboardOptions = {},
+): void {
   const elements = queryElements();
   let enabledFilters = new Set<string>(EVENT_BUCKETS);
   let fetchInFlight = false;
@@ -254,11 +314,17 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
   let privateEventSource: EventSource | null = null;
   const staleThresholdMs = BOOTSTRAP_CONFIG.STALE_THRESHOLD_MS;
 
-  const publicDashboardApiUrl = options.publicDashboardApiUrl ?? BOOTSTRAP_CONFIG.PUBLIC_DASHBOARD_API_URL;
-  const privateDashboardApiUrl = options.privateDashboardApiUrl ?? BOOTSTRAP_CONFIG.PRIVATE_DASHBOARD_API_URL;
-  const publicEventsApiUrl = options.publicEventsApiUrl ?? BOOTSTRAP_CONFIG.PUBLIC_EVENTS_API_URL;
-  const privateEventsApiUrl = options.privateEventsApiUrl ?? BOOTSTRAP_CONFIG.PRIVATE_EVENTS_API_URL;
-  const privateSessionApiUrl = options.privateSessionApiUrl ?? BOOTSTRAP_CONFIG.PRIVATE_SESSION_API_URL;
+  const publicDashboardApiUrl =
+    options.publicDashboardApiUrl ?? BOOTSTRAP_CONFIG.PUBLIC_DASHBOARD_API_URL;
+  const privateDashboardApiUrl =
+    options.privateDashboardApiUrl ??
+    BOOTSTRAP_CONFIG.PRIVATE_DASHBOARD_API_URL;
+  const publicEventsApiUrl =
+    options.publicEventsApiUrl ?? BOOTSTRAP_CONFIG.PUBLIC_EVENTS_API_URL;
+  const privateEventsApiUrl =
+    options.privateEventsApiUrl ?? BOOTSTRAP_CONFIG.PRIVATE_EVENTS_API_URL;
+  const privateSessionApiUrl =
+    options.privateSessionApiUrl ?? BOOTSTRAP_CONFIG.PRIVATE_SESSION_API_URL;
   const rootDataset = readRootDataset(elements.rootEl);
 
   const store = new DashboardStore(BOOTSTRAP_CONFIG.MAX_EVENTS);
@@ -266,16 +332,21 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
   const privateConfigured = rootDataset.privateConfigured;
 
   const panelKeys: (keyof DashboardElements)[] = [
-    'agentListEl',
+    "agentListEl",
     ...PUBLIC_DASHBOARD_PANELS.map((panel) => panel.key),
-    ...(privateViewEnabled ? ['eventListEl' as const, ...PRIVATE_DASHBOARD_PANELS.map((panel) => panel.key)] : []),
+    ...(privateViewEnabled
+      ? [
+          "eventListEl" as const,
+          ...PRIVATE_DASHBOARD_PANELS.map((panel) => panel.key),
+        ]
+      : []),
   ];
 
   function renderSkeletons(): void {
     const skeleton = renderSkeletonRows(3);
     for (const key of panelKeys) {
       const el = elements[key];
-      // pi-lens-ignore: ast-grep:no-inner-html
+      // pi-lens-ignore: ast-grep:no-inner-html, ts-xss-dom-sink
       if (el) (el as HTMLElement).innerHTML = skeleton;
     }
   }
@@ -291,7 +362,8 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (staleTimer) clearInterval(staleTimer);
     staleTimer = setInterval(() => {
       const snapshot = store.getSnapshot();
-      const source = snapshot.lastSuccessfulSnapshotAt ?? snapshot.lastUpdatedAt;
+      const source =
+        snapshot.lastSuccessfulSnapshotAt ?? snapshot.lastUpdatedAt;
       if (!source) {
         store.setStale(true);
         return;
@@ -309,45 +381,77 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     }, BOOTSTRAP_CONFIG.EVENT_BATCH_DEBOUNCE_MS);
   }
 
-  window.addEventListener('beforeunload', () => {
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-    if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
-    if (eventDebounceTimer) { clearTimeout(eventDebounceTimer); eventDebounceTimer = null; }
-    if (publicEventSource) { publicEventSource.close(); publicEventSource = null; }
-    if (privateEventSource) { privateEventSource.close(); privateEventSource = null; }
+  window.addEventListener("beforeunload", () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+    if (staleTimer) {
+      clearInterval(staleTimer);
+      staleTimer = null;
+    }
+    if (eventDebounceTimer) {
+      clearTimeout(eventDebounceTimer);
+      eventDebounceTimer = null;
+    }
+    if (publicEventSource) {
+      publicEventSource.close();
+      publicEventSource = null;
+    }
+    if (privateEventSource) {
+      privateEventSource.close();
+      privateEventSource = null;
+    }
     unsubscribeStore();
-    if (elements.eventFiltersEl) elements.eventFiltersEl.removeEventListener('change', onFilterChange);
-    if (elements.retryButtonEl) elements.retryButtonEl.removeEventListener('click', onRetryClick);
-    if (elements.privateViewFormEl) elements.privateViewFormEl.removeEventListener('submit', onFormSubmit);
-    if (elements.privateViewLockEl) elements.privateViewLockEl.removeEventListener('click', onLockClick);
+    if (elements.eventFiltersEl)
+      elements.eventFiltersEl.removeEventListener("change", onFilterChange);
+    if (elements.retryButtonEl)
+      elements.retryButtonEl.removeEventListener("click", onRetryClick);
+    if (elements.privateViewFormEl)
+      elements.privateViewFormEl.removeEventListener("submit", onFormSubmit);
+    if (elements.privateViewLockEl)
+      elements.privateViewLockEl.removeEventListener("click", onLockClick);
   });
 
   const renderState = (state: DashboardState): void => {
     setText(elements.stateEl, state.connectionState);
-    if (elements.stateEl) elements.stateEl.className = connectionClass(state.connectionState);
+    if (elements.stateEl)
+      elements.stateEl.className = connectionClass(state.connectionState);
 
     setText(elements.agentsEl, String(state.agents.length));
     setText(elements.sessionsEl, String(state.sessions.length));
-    setText(elements.updatedEl, state.lastUpdatedAt ? new Date(state.lastUpdatedAt).toLocaleTimeString() : '-');
+    setText(
+      elements.updatedEl,
+      state.lastUpdatedAt
+        ? new Date(state.lastUpdatedAt).toLocaleTimeString()
+        : "-",
+    );
 
     if (elements.agentListEl) {
-      // pi-lens-ignore: ast-grep:no-inner-html
-      elements.agentListEl.innerHTML = renderAgentRows(state, countSessionsByAgent(state.sessions));
+      // pi-lens-ignore: ast-grep:no-inner-html, ts-xss-dom-sink
+      elements.agentListEl.innerHTML = renderAgentRows(
+        state,
+        countSessionsByAgent(state.sessions),
+      );
     }
 
     if (privateViewEnabled && elements.eventListEl) {
-      // pi-lens-ignore: ast-grep:no-inner-html
+      // pi-lens-ignore: ast-grep:no-inner-html, ts-xss-dom-sink
       elements.eventListEl.innerHTML = renderEventRows(state, enabledFilters);
     }
 
     const panelCache = new Map<string, string>();
 
-    const safeSetInnerHTML = (el: HTMLElement | null, html: string, cacheKey: string): void => {
+    const safeSetInnerHTML = (
+      el: HTMLElement | null,
+      html: string,
+      cacheKey: string,
+    ): void => {
       if (!el) return;
       const prev = panelCache.get(cacheKey);
       if (prev === html) return;
       panelCache.set(cacheKey, html);
-      // pi-lens-ignore: ast-grep:no-inner-html
+      // pi-lens-ignore: ast-grep:no-inner-html, ts-xss-dom-sink
       el.innerHTML = html;
     };
 
@@ -355,10 +459,15 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
       const el = elements[panel.key];
       if (el) {
         try {
-          safeSetInnerHTML(el as HTMLElement, PANEL_RENDERERS[panel.key](state), panel.key);
+          safeSetInnerHTML(
+            el as HTMLElement,
+            PANEL_RENDERERS[panel.key](state),
+            panel.key,
+          );
         } catch (err) {
           console.error(`Panel ${panel.key} render failed:`, err);
-          (el as HTMLElement).innerHTML = '<li class="text-red-400">Panel render error</li>';
+          (el as HTMLElement).innerHTML =
+            '<li class="text-red-400">Panel render error</li>';
         }
       }
     }
@@ -366,70 +475,84 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (privateViewEnabled) {
       for (const panel of PRIVATE_DASHBOARD_PANELS) {
         const el = elements[panel.key];
-        if (el) safeSetInnerHTML(el as HTMLElement, PANEL_RENDERERS[panel.key](state), panel.key);
+        if (el)
+          safeSetInnerHTML(
+            el as HTMLElement,
+            PANEL_RENDERERS[panel.key](state),
+            panel.key,
+          );
       }
     }
 
     setText(elements.reconnectCountEl, String(state.reconnectCount));
     setText(elements.errorCountEl, String(state.errorCount));
     if (elements.staleBadgeEl) {
-      elements.staleBadgeEl.textContent = state.stale ? 'stale ⚠️' : 'fresh ✅';
-      elements.staleBadgeEl.className = state.stale ? 'status-badge status-error' : 'status-badge status-ok';
+      elements.staleBadgeEl.textContent = state.stale ? "stale ⚠️" : "fresh ✅";
+      elements.staleBadgeEl.className = state.stale
+        ? "status-badge status-error"
+        : "status-badge status-ok";
     }
 
     if (elements.retryNoteEl) {
-      if (state.connectionState === 'connected') {
+      if (state.connectionState === "connected") {
         elements.retryNoteEl.textContent = privateViewEnabled
-          ? 'Connected via SSR. Public and private views are live.'
-          : 'Connected via SSR. Public view is live.';
-      } else if (state.connectionState === 'reconnecting') {
-        elements.retryNoteEl.textContent = 'Server reconnecting to gateway...';
-      } else if (state.connectionState === 'handshaking') {
-        elements.retryNoteEl.textContent = 'Server authenticating with gateway...';
+          ? "Connected via SSR. Public and private views are live."
+          : "Connected via SSR. Public view is live.";
+      } else if (state.connectionState === "reconnecting") {
+        elements.retryNoteEl.textContent = "Server reconnecting to gateway...";
+      } else if (state.connectionState === "handshaking") {
+        elements.retryNoteEl.textContent =
+          "Server authenticating with gateway...";
       } else {
-        elements.retryNoteEl.textContent = 'Server-side gateway connection pending.';
+        elements.retryNoteEl.textContent =
+          "Server-side gateway connection pending.";
       }
     }
 
-    setText(elements.heroAgentCountEl, state.connectionState === 'connected' ? String(state.agents.length) : '-');
+    setText(
+      elements.heroAgentCountEl,
+      state.connectionState === "connected" ? String(state.agents.length) : "-",
+    );
 
     if (elements.heroStatusDotEl) {
       const dotColorClass =
-        state.connectionState === 'connected'
-          ? 'bg-terminal-green animate-connection-pulse'
-          : state.connectionState === 'connecting' || state.connectionState === 'reconnecting' || state.connectionState === 'handshaking'
-            ? 'bg-terminal-amber animate-connection-pulse'
-            : state.connectionState === 'error'
-              ? 'bg-terminal-error'
-              : 'bg-terminal-muted';
+        state.connectionState === "connected"
+          ? "bg-terminal-green animate-connection-pulse"
+          : state.connectionState === "connecting" ||
+              state.connectionState === "reconnecting" ||
+              state.connectionState === "handshaking"
+            ? "bg-terminal-amber animate-connection-pulse"
+            : state.connectionState === "error"
+              ? "bg-terminal-error"
+              : "bg-terminal-muted";
       elements.heroStatusDotEl.className = `h-2 w-2 rounded-full ${dotColorClass}`;
     }
 
     if (elements.heroStatusTextEl) {
       const statusText =
-        state.connectionState === 'connected'
-          ? `${state.agents.length} agent${state.agents.length !== 1 ? 's' : ''} online`
-          : state.connectionState === 'connecting'
-            ? 'Connecting to gateway...'
-            : state.connectionState === 'handshaking'
-              ? 'Authenticating...'
-              : state.connectionState === 'reconnecting'
-                ? 'Reconnecting...'
-                : state.connectionState === 'error'
-                  ? 'Gateway error'
-                  : 'Waiting for gateway...';
+        state.connectionState === "connected"
+          ? `${state.agents.length} agent${state.agents.length !== 1 ? "s" : ""} online`
+          : state.connectionState === "connecting"
+            ? "Connecting to gateway..."
+            : state.connectionState === "handshaking"
+              ? "Authenticating..."
+              : state.connectionState === "reconnecting"
+                ? "Reconnecting..."
+                : state.connectionState === "error"
+                  ? "Gateway error"
+                  : "Waiting for gateway...";
       elements.heroStatusTextEl.textContent = statusText;
     }
 
     // Update-available banner (R7)
     if (elements.updateAvailableBannerEl && elements.updateAvailableTextEl) {
       if (state.updateAvailable) {
-        const { currentVersion, latestVersion, channel } = state.updateAvailable;
-        elements.updateAvailableTextEl.textContent =
-          `OpenClaw ${latestVersion} available (current: ${currentVersion}, channel: ${channel})`;
-        elements.updateAvailableBannerEl.classList.remove('hidden');
+        const { currentVersion, latestVersion, channel } =
+          state.updateAvailable;
+        elements.updateAvailableTextEl.textContent = `OpenClaw ${latestVersion} available (current: ${currentVersion}, channel: ${channel})`;
+        elements.updateAvailableBannerEl.classList.remove("hidden");
       } else {
-        elements.updateAvailableBannerEl.classList.add('hidden');
+        elements.updateAvailableBannerEl.classList.add("hidden");
       }
     }
 
@@ -437,43 +560,60 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (elements.shutdownBannerEl && elements.shutdownTextEl) {
       if (state.shutdown) {
         const { reason, restartExpectedMs } = state.shutdown;
-        const eta = restartExpectedMs ? ` — expected back in ${Math.round(restartExpectedMs / 1000)}s` : '';
+        const eta = restartExpectedMs
+          ? ` — expected back in ${Math.round(restartExpectedMs / 1000)}s`
+          : "";
         elements.shutdownTextEl.textContent = `Gateway restarting (${reason})${eta}`;
-        elements.shutdownBannerEl.classList.remove('hidden');
+        elements.shutdownBannerEl.classList.remove("hidden");
       } else {
-        elements.shutdownBannerEl.classList.add('hidden');
+        elements.shutdownBannerEl.classList.add("hidden");
       }
     }
   };
 
   const onFilterChange = () => {
-    const selected = Array.from(elements.eventFiltersEl?.querySelectorAll('input[type="checkbox"]:checked') ?? []).map(
-      (node) => node.getAttribute('value'),
+    const selected = Array.from(
+      elements.eventFiltersEl?.querySelectorAll(
+        'input[type="checkbox"]:checked',
+      ) ?? [],
+    ).map((node) => node.getAttribute("value"));
+    enabledFilters = new Set(
+      selected.filter((value): value is string => Boolean(value)),
     );
-    enabledFilters = new Set(selected.filter((value): value is string => Boolean(value)));
     renderState(store.getSnapshot());
   };
 
   if (elements.eventFiltersEl) {
-    elements.eventFiltersEl.addEventListener('change', onFilterChange);
+    elements.eventFiltersEl.addEventListener("change", onFilterChange);
   }
 
   const unsubscribeStore = store.subscribe(renderState);
 
-  async function fetchSnapshot(url: string, onAuthFailure?: () => void): Promise<DashboardSnapshotPayload | null> {
+  async function fetchSnapshot(
+    url: string,
+    onAuthFailure?: () => void,
+  ): Promise<DashboardSnapshotPayload | null> {
     const response = await fetch(url);
     if (response.status === 401) {
       onAuthFailure?.();
       return null;
     }
     if (!response.ok) {
-      console.warn('[clawsprawl] dashboard fetch failed:', response.status, url);
-      store.setConnectionState('error');
+      console.warn(
+        "[clawsprawl] dashboard fetch failed:",
+        response.status,
+        url,
+      );
+      store.setConnectionState("error");
       return null;
     }
     const data = await response.json();
-    if (typeof data !== 'object' || data === null || !('connectionState' in data)) {
-      console.warn('[clawsprawl] dashboard fetch returned invalid shape:', url);
+    if (
+      typeof data !== "object" ||
+      data === null ||
+      !("connectionState" in data)
+    ) {
+      console.warn("[clawsprawl] dashboard fetch returned invalid shape:", url);
       return null;
     }
     return data as DashboardSnapshotPayload;
@@ -500,13 +640,19 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
 
       store.markSnapshotSuccess();
       const panelCount = computePanelCount(privateViewEnabled);
-      setText(elements.messageEl, privateViewEnabled
-        ? `Connected via SSR. ${panelCount} panels visible with private view unlocked.`
-        : `Connected via SSR. ${panelCount} public panels visible.`);
+      setText(
+        elements.messageEl,
+        privateViewEnabled
+          ? `Connected via SSR. ${panelCount} panels visible with private view unlocked.`
+          : `Connected via SSR. ${panelCount} public panels visible.`,
+      );
     } catch (err) {
-      console.error('[clawsprawl] dashboard fetch error:', err);
-      store.setConnectionState('error');
-      setText(elements.messageEl, 'Failed to fetch dashboard data from server. Retrying...');
+      console.error("[clawsprawl] dashboard fetch error:", err);
+      store.setConnectionState("error");
+      setText(
+        elements.messageEl,
+        "Failed to fetch dashboard data from server. Retrying...",
+      );
     } finally {
       fetchInFlight = false;
     }
@@ -515,11 +661,13 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
   function connectPublicSSE(): void {
     if (publicEventSource) publicEventSource.close();
     publicEventSource = new EventSource(publicEventsApiUrl);
-    publicEventSource.addEventListener('snapshot-updated', () => {
+    publicEventSource.addEventListener("snapshot-updated", () => {
       void fetchDashboard();
     });
     publicEventSource.onerror = () => {
-      console.warn('[clawsprawl] public SSE connection error — will auto-reconnect.');
+      console.warn(
+        "[clawsprawl] public SSE connection error — will auto-reconnect.",
+      );
     };
   }
 
@@ -528,33 +676,46 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     if (privateEventSource) privateEventSource.close();
 
     privateEventSource = new EventSource(privateEventsApiUrl);
-    privateEventSource.addEventListener('gateway-event', (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-        store.pushEvent({ type: 'event', event: data.event, payload: data.payload, seq: data.seq });
-        scheduleEventRefresh();
-      } catch {
-        /* Ignore malformed events */
-      }
-    });
-    privateEventSource.addEventListener('snapshot-updated', () => {
+    privateEventSource.addEventListener(
+      "gateway-event",
+      (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          store.pushEvent({
+            type: "event",
+            event: data.event,
+            payload: data.payload,
+            seq: data.seq,
+          });
+          scheduleEventRefresh();
+        } catch {
+          /* Ignore malformed events */
+        }
+      },
+    );
+    privateEventSource.addEventListener("snapshot-updated", () => {
       void fetchDashboard();
     });
     privateEventSource.onerror = () => {
-      console.warn('[clawsprawl] private SSE connection error — will auto-reconnect.');
+      console.warn(
+        "[clawsprawl] private SSE connection error — will auto-reconnect.",
+      );
     };
   }
 
   async function unlockPrivateView(token: string): Promise<void> {
     const response = await fetch(privateSessionApiUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      setText(elements.messageEl, 'Private view unlock failed. Check your token and try again.');
+      setText(
+        elements.messageEl,
+        "Private view unlock failed. Check your token and try again.",
+      );
       return;
     }
 
@@ -562,13 +723,13 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
   }
 
   async function lockPrivateView(): Promise<void> {
-    await fetch(privateSessionApiUrl, { method: 'DELETE' });
+    await fetch(privateSessionApiUrl, { method: "DELETE" });
     window.location.reload();
   }
 
   async function bootstrap(): Promise<void> {
     renderSkeletons();
-    store.setConnectionState('connecting');
+    store.setConnectionState("connecting");
 
     await fetchDashboard();
     connectPublicSSE();
@@ -577,28 +738,35 @@ export function initGatewayDashboard(options: GatewayDashboardOptions = {}): voi
     scheduleStaleChecks();
   }
 
-  const onRetryClick = () => { void bootstrap(); };
+  const onRetryClick = () => {
+    void bootstrap();
+  };
   const onFormSubmit = (event: Event) => {
     event.preventDefault();
-    const token = elements.privateViewTokenEl?.value?.trim() ?? '';
+    const token = elements.privateViewTokenEl?.value?.trim() ?? "";
     if (!privateConfigured || token.length === 0) {
-      setText(elements.messageEl, 'Enter a valid bearer token to unlock private view.');
+      setText(
+        elements.messageEl,
+        "Enter a valid bearer token to unlock private view.",
+      );
       return;
     }
     void unlockPrivateView(token);
   };
-  const onLockClick = () => { void lockPrivateView(); };
+  const onLockClick = () => {
+    void lockPrivateView();
+  };
 
   if (elements.retryButtonEl) {
-    elements.retryButtonEl.addEventListener('click', onRetryClick);
+    elements.retryButtonEl.addEventListener("click", onRetryClick);
   }
 
   if (elements.privateViewFormEl && elements.privateViewTokenEl) {
-    elements.privateViewFormEl.addEventListener('submit', onFormSubmit);
+    elements.privateViewFormEl.addEventListener("submit", onFormSubmit);
   }
 
   if (elements.privateViewLockEl) {
-    elements.privateViewLockEl.addEventListener('click', onLockClick);
+    elements.privateViewLockEl.addEventListener("click", onLockClick);
   }
 
   void bootstrap();
