@@ -28,7 +28,8 @@ export interface DashboardPanelDefinition {
     | 'permissionActivityListEl'
     | 'toolExecutionListEl'
     | 'fileTrackingListEl'
-    | 'sessionDetailListEl';
+    | 'sessionDetailListEl'
+    | 'progressCardListEl';
   /** DOM id for the panel's `<ul>` list container. */
   id: string;
   /** Human-readable panel heading. */
@@ -68,6 +69,7 @@ export const DASHBOARD_PANEL_DEFINITIONS: DashboardPanelDefinition[] = [
   { key: 'toolExecutionListEl', id: 'gateway-tool-execution-list', title: '⚡ Tool Executions', visibility: 'private', lockedReason: 'contains tool activity', articleClassName: 'terminal-panel', listClassName: 'mt-3 max-h-56 space-y-2 overflow-auto text-xs text-terminal-muted' },
   { key: 'fileTrackingListEl', id: 'gateway-file-tracking-list', title: '📂 File Changes', visibility: 'private', lockedReason: 'contains file paths', articleClassName: 'terminal-panel lg:col-span-2', listClassName: 'mt-3 max-h-64 space-y-2 overflow-auto text-xs text-terminal-muted' },
   { key: 'sessionDetailListEl', id: 'gateway-session-detail-list', title: '📋 Session Details', visibility: 'private', lockedReason: 'contains detailed session data', articleClassName: 'terminal-panel lg:col-span-2', listClassName: 'mt-3 max-h-64 space-y-2 overflow-auto text-xs text-terminal-muted' },
+  { key: 'progressCardListEl', id: 'gateway-progress-card-list', title: '⏳ Agent Progress', visibility: 'private', lockedReason: 'contains live per-session agent activity', articleClassName: 'terminal-panel', listClassName: 'mt-3 max-h-64 space-y-2 overflow-auto text-xs text-terminal-muted' },
 ];
 
 /** Dashboard panel count shown in connection status copy.

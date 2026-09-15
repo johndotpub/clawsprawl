@@ -29,6 +29,7 @@ import {
   normalizeMemoryStatus,
   normalizeModels,
   normalizePresence,
+  normalizeProgressCard,
   normalizeSessionDetails,
   normalizeSessions,
   normalizeSkillsStatus,
@@ -42,10 +43,18 @@ import type { EventFrame, ConnectionState } from "./types";
 import type {
   FileStatusEntry,
   ConfigResponse,
+  ProgressCard,
   SessionDetailEntry,
 } from "./types";
 import { CLIENT_VERSION } from "./protocol";
-import { DASHBOARD_CAPABILITIES } from "./capabilities";
+import { DASHBOARD_CAPABILITIES, hasCapability, hasMethod } from "./capabilities";
+
+/** Gateway capability that gates agent-scoped progress cards (OpenClaw 2026.9). */
+const PROGRESS_CARD_CAPABILITY = "progress-card-agent-scope-v1";
+/** RPC method that publishes per-session progress cards. */
+const PROGRESS_CARD_METHOD = "progressCard.get";
+/** Maximum session keys fetched per progress-card refresh cycle. */
+const PROGRESS_CARD_FETCH_LIMIT = 20;
 
 /** Parse comma-separated gateway scopes from env into a trimmed array. */
 function parseGatewayScopes(value: string | undefined): string[] | undefined {
@@ -140,6 +149,10 @@ export interface DashboardSnapshot {
   gatewayCapabilities: string[];
   /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
   scopeHints: ScopeHint[];
+  /** Per-session agent progress cards from `progressCard.get`, keyed by sessionKey (agent-scoped, gateway ≥ 2026.9). */
+  progressCards: Record<string, ProgressCard>;
+  /** Session keys with an active agent run — `activeRunIds` snapshot/delta events (omission = no change, null = none). */
+  activeRunIds: string[];
 }
 
 /** A panel-visible hint that an RPC failed only for lack of operator scopes. */
@@ -216,6 +229,8 @@ export class GatewayServerService {
     shutdown: null,
     gatewayCapabilities: [],
     scopeHints: [],
+    progressCards: {},
+    activeRunIds: [],
   };
 
   constructor() {
@@ -463,6 +478,42 @@ export class GatewayServerService {
       if (this.cache.shutdown) {
         this.cache.shutdown = null;
       }
+    } else if (event.event === "progressCard.changed") {
+      // Card payload shape varies across gateway builds (unverified) — do NOT
+      // patch the cache from the event payload. Invalidation-only: schedule a
+      // debounced re-fetch so the next refresh pulls the authoritative card
+      // via `progressCard.get`.
+      this.scheduleInvalidation();
+    } else if (event.event === "sessions.changed") {
+      this.applyActiveRunIdsDelta(event.payload);
+    }
+  }
+
+  /**
+   * Apply `activeRunIds` snapshot/delta semantics from a `sessions.changed`
+   * event payload into the cache.
+   *
+   * Semantics (docs: gateway/protocol/rpc-bootstrap-and-events.md):
+   * - field **omitted** → no change — the previous value is RETAINED (do not
+   *   clear; sessions.changed fires for reasons unrelated to runs),
+   * - explicit **`null`** → no active runs — clears the cache to `[]`,
+   * - **array** (of session keys) → replaces the cached active-run list.
+   *   Non-string entries are filtered out.
+   */
+  private applyActiveRunIdsDelta(payload: unknown): void {
+    if (typeof payload !== "object" || payload === null) return;
+    const record = payload as Record<string, unknown>;
+    // Omission = no change — only act when the field is present.
+    if (!("activeRunIds" in record)) return;
+    const value = record.activeRunIds;
+    if (value === null) {
+      this.cache.activeRunIds = [];
+      return;
+    }
+    if (Array.isArray(value)) {
+      this.cache.activeRunIds = value.filter(
+        (id): id is string => typeof id === "string",
+      );
     }
   }
 
@@ -545,12 +596,17 @@ export class GatewayServerService {
    * X" instead of an unexplained blank.
    *
    * @param method - RPC method name to invoke.
+   * @param params - Optional RPC params (e.g. `{ sessionKey }` for per-key
+   *   fetches like `progressCard.get`). Passed through verbatim.
    * @returns The raw response payload, or null when unavailable/failed.
    */
-  private callIfAvailable(method: string): Promise<unknown> {
+  private callIfAvailable(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
     if (!this.canCall(method)) return Promise.resolve(null);
     return this.client
-      .call(method)
+      .call(method, params)
       .catch((err: Error & { code?: string; missingScopes?: string[] }) => {
         if (
           err.code === "FORBIDDEN" &&
@@ -578,6 +634,26 @@ export class GatewayServerService {
         /* swallow listener errors */
       }
     }
+  }
+
+  /**
+   * Pick the top-N session keys for per-key fetches (e.g. progress cards).
+   *
+   * Ordered by most recent session-detail activity (`lastActivityAt`) when
+   * session details are available; falls back to the first N `sessions.list`
+   * keys (gateway order) otherwise.
+   */
+  private topSessionKeys(limit: number): string[] {
+    const details = this.cache.sessionDetails ?? [];
+    if (details.length > 0) {
+      return [...details]
+        .sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
+        .slice(0, limit)
+        .map((d) => d.key);
+    }
+    return this.cache.sessions
+      .slice(0, limit)
+      .map((session) => session.key);
   }
 
   /** Fetch all dashboard data via RPC calls. */
@@ -747,6 +823,37 @@ export class GatewayServerService {
       // a hint that stops appearing means the scope issue was resolved.
       this.cache.scopeHints = [...this.scopeHints];
       this.scopeHints = [];
+
+      // --- Progress cards (agent-scoped, gateway ≥ 2026.9) ---
+      // Gate on BOTH the advertised capability and the RPC method, then fetch
+      // cards for the top N most-recently-active session keys in parallel.
+      // Absent capability/method (or per-key failure) leaves the previous
+      // cached cards untouched — panels degrade to stale-then-absent.
+      const capabilities = this.client.helloOk?.features?.capabilities;
+      if (
+        hasCapability(capabilities, PROGRESS_CARD_CAPABILITY) &&
+        hasMethod(this.client.helloOk, PROGRESS_CARD_METHOD)
+      ) {
+        const sessionKeys = this.topSessionKeys(PROGRESS_CARD_FETCH_LIMIT);
+        const fetched = await Promise.all(
+          sessionKeys.map(async (sessionKey) => {
+            const raw = await this.callIfAvailable(PROGRESS_CARD_METHOD, {
+              sessionKey,
+            });
+            return this.safeNormalize(
+              "progressCard",
+              raw,
+              (d) => normalizeProgressCard(d, sessionKey),
+            );
+          }),
+        );
+        const cards: Record<string, ProgressCard> = {};
+        for (const card of fetched) {
+          if (card) cards[card.sessionKey] = card;
+        }
+        this.cache.progressCards = cards;
+      }
+
       this.notifySnapshotUpdated();
     } catch (err) {
       console.warn("[clawsprawl:server] data refresh failed:", err);

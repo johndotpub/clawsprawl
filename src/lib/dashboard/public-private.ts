@@ -183,6 +183,10 @@ export function buildPublicSnapshot(snapshot: DashboardSnapshot): PublicSnapshot
     // Capability/scope metadata is gateway-recon surface — public view stays blind.
     gatewayCapabilities: [],
     scopeHints: [],
+    // Progress cards and active-run IDs carry session keys + live agent
+    // activity — private-only. Public view renders neither.
+    progressCards: {},
+    activeRunIds: [],
   };
 }
 

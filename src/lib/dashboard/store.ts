@@ -13,6 +13,7 @@ import type {
   MemoryStatusResponse,
   ModelInfo,
   PresenceEntry,
+  ProgressCard,
   SessionDetailEntry,
   SessionSummary,
   SkillsStatusResponse,
@@ -67,6 +68,10 @@ export interface DashboardState {
   gatewayCapabilities: string[];
   /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
   scopeHints: ScopeHint[];
+  /** Per-session agent progress cards from `progressCard.get`, keyed by sessionKey (private view only). */
+  progressCards: Record<string, ProgressCard>;
+  /** Session keys with an active agent run — `activeRunIds` snapshot/delta events. */
+  activeRunIds: string[];
 }
 
 /** Snapshot payload shape returned by dashboard snapshot API routes. */
@@ -100,6 +105,10 @@ export interface DashboardSnapshotPayload {
   gatewayCapabilities?: string[];
   /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
   scopeHints?: ScopeHint[];
+  /** Per-session agent progress cards from `progressCard.get`, keyed by sessionKey (private view only). */
+  progressCards?: Record<string, ProgressCard>;
+  /** Session keys with an active agent run — `activeRunIds` snapshot/delta events. */
+  activeRunIds?: string[];
 }
 
 type StateListener = (state: DashboardState) => void;
@@ -134,6 +143,8 @@ const DEFAULT_STATE: DashboardState = {
   shutdown: null,
   gatewayCapabilities: [],
   scopeHints: [],
+  progressCards: {},
+  activeRunIds: [],
 };
 
 /** Maximum events retained in the ring buffer (default 200). */
@@ -386,6 +397,8 @@ export class DashboardStore {
     if (snapshot.sessionDetails !== undefined) patch.sessionDetails = snapshot.sessionDetails;
     if (snapshot.updateAvailable !== undefined) patch.updateAvailable = snapshot.updateAvailable;
     if (snapshot.shutdown !== undefined) patch.shutdown = snapshot.shutdown;
+    if (snapshot.progressCards !== undefined) patch.progressCards = snapshot.progressCards;
+    if (snapshot.activeRunIds !== undefined) patch.activeRunIds = snapshot.activeRunIds;
 
     this.update(patch);
   }

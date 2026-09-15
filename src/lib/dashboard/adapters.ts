@@ -11,6 +11,7 @@ import type {
   MemoryStatusResponse,
   ModelInfo,
   PresenceEntry,
+  ProgressCard,
   SessionDetailEntry,
   SessionSummary,
   SkillsStatusResponse,
@@ -767,6 +768,74 @@ export function formatTokenCount(tokens: number, trimZero = false): string {
   if (tokens >= 1_000_000) return fmt(tokens, 1_000_000, 'M');
   if (tokens >= 1_000) return fmt(tokens, 1_000, 'k');
   return String(tokens);
+}
+
+// ---------------------------------------------------------------------------
+// RPC normalizers — progress card panel (agent-scoped, gateway ≥ 2026.9)
+// ---------------------------------------------------------------------------
+
+/** Valid progress-card step statuses (unknown raw statuses default to `pending`). */
+const PROGRESS_CARD_STATUSES = new Set(['pending', 'in_progress', 'completed']);
+
+/**
+ * Build an optional spread object `{ [key]: value }` when `value` is a non-empty
+ * string. Returns `{}` otherwise, so it vanishes in a spread. Unlike
+ * {@link optionalString}, empty strings are treated as absent (gateway omits
+ * empty fields rather than sending `""`).
+ */
+function optionalNonEmptyString<K extends string>(
+  key: K,
+  value: unknown,
+): { [P in K]?: string } {
+  return typeof value === 'string' && value.length > 0
+    ? ({ [key]: value } as { [P in K]?: string })
+    : ({} as { [P in K]?: string });
+}
+
+/**
+ * Normalize a `progressCard.get` RPC response into a {@link ProgressCard}.
+ *
+ * Tolerant by design — the gateway publishes one card per session (≤ 50 steps,
+ * one `in_progress` at a time) but payload shapes vary across gateway builds:
+ * - `title` is read when present, `agentId`/`updatedAt` pass through when strings.
+ * - `steps` must be an array; malformed entries (non-object, missing/non-string
+ *   `step` name) are skipped; unrecognized `status` values default to `pending`.
+ * - Empty or absent `steps` is tolerated (normalizes to an empty array).
+ *
+ * @param payload - Raw `progressCard.get` response payload.
+ * @param fallbackSessionKey - Session key used when the payload omits `sessionKey`
+ *   (the caller fetched per-key, so it knows the key).
+ * @returns The normalized card, or `null` when the payload is not an object or
+ *   has no usable session key.
+ */
+export function normalizeProgressCard(
+  payload: unknown,
+  fallbackSessionKey = '',
+): ProgressCard | null {
+  const record = asRecord(payload);
+  const sessionKey = asString(record.sessionKey, fallbackSessionKey);
+  if (sessionKey.length === 0) return null;
+
+  const rawSteps = Array.isArray(record.steps) ? record.steps : [];
+  const steps = rawSteps.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return []; // skip malformed
+    const rec = entry as Record<string, unknown>;
+    const step = typeof rec.step === 'string' ? rec.step : '';
+    if (step.length === 0) return []; // skip malformed
+    const status =
+      typeof rec.status === 'string' && PROGRESS_CARD_STATUSES.has(rec.status)
+        ? (rec.status as ProgressCard['steps'][number]['status'])
+        : 'pending';
+    return [{ step, status }];
+  });
+
+  return {
+    sessionKey,
+    ...optionalNonEmptyString('agentId', record.agentId),
+    ...optionalNonEmptyString('title', record.title),
+    steps,
+    ...optionalNonEmptyString('updatedAt', record.updatedAt),
+  };
 }
 
 // ---------------------------------------------------------------------------

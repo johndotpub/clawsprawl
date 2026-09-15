@@ -8,6 +8,7 @@ import {
   summarizeProviderHealth,
 } from '../adapters';
 import type { DashboardState } from '../store';
+import type { ProgressCard } from '../../gateway/types';
 import {
   badge,
   channelErrorDetail,
@@ -65,6 +66,8 @@ export function renderCronRows(state: DashboardState): string {
     const name = asString(job.name, 'cron-job');
     const jobId = asString(job.id, name);
     const schedule = typeof job.schedule === 'object' && job.schedule !== null
+      // SAFETY: the union narrowing above proves schedule is CronSchedule | string
+      // here; the cast only narrows the object arm to reach its `expr` field.
       ? asString((job.schedule as unknown as Record<string, unknown>).expr, 'n/a')
       : asString(job.schedule, 'n/a');
     const enabled = job.enabled !== false;
@@ -503,6 +506,40 @@ export function renderFileTrackingRows(state: DashboardState): string {
   return parts.length > 0 ? parts.join('') : emptyRow('No file changes tracked yet.');
 }
 
+export function renderProgressCardRows(
+  cards: Record<string, ProgressCard>,
+  activeRunIds: string[] | null,
+): string {
+  const entries = Object.values(cards);
+  if (entries.length === 0) return emptyRow('No progress cards loaded.');
+
+  const running = new Set(activeRunIds ?? []);
+
+  const rows = entries.map((card) => {
+    const title = card.title ?? card.sessionKey;
+    const steps = card.steps;
+
+    // Progress bar text: `#` completed, `=` in progress, `-` pending.
+    const done = steps.filter((s) => s.status === 'completed').length;
+    const bar = steps
+      .map((s) => (s.status === 'completed' ? '#' : s.status === 'in_progress' ? '=' : '-'))
+      .join('');
+    const barText = steps.length > 0 ? `[${bar}] ${done}/${steps.length}` : '[—] 0/0';
+
+    const current = steps.find((s) => s.status === 'in_progress');
+    const live = running.has(card.sessionKey);
+
+    const parts: string[] = [label(title)];
+    parts.push(tag(barText));
+    if (current) parts.push(muted(truncate(current.step, 60)));
+    // Live marker: card's session is in the gateway's activeRunIds snapshot.
+    if (live) parts.push(badge('ok', '● live'));
+    return row(parts, 'stack');
+  });
+
+  return rows.join('');
+}
+
 export function renderSessionDetailRows(state: DashboardState): string {
   if (!state.sessionDetails) return emptyRow('No session detail data loaded.');
   if (state.sessionDetails.length === 0) return emptyRow('No active sessions.');
@@ -535,3 +572,4 @@ export function renderSessionDetailRows(state: DashboardState): string {
     : '';
   return rows.join('') + overflow;
 }
+

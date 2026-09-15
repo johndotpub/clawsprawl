@@ -18,6 +18,7 @@ import {
   renderModelRows,
   renderPermissionActivityRows,
   renderPresenceRows,
+  renderProgressCardRows,
   renderProviderRows,
   renderSessionDetailRows,
   renderSessionRows,
@@ -29,6 +30,8 @@ import {
   renderUsageCostRows,
 } from './renderers';
 import { SESSION_DISPLAY_LIMIT, extractTimestamp } from './renderers/shared';
+import { normalizeProgressCard } from './adapters';
+import type { ProgressCard } from '../gateway/types';
 
 const baseState: DashboardState = {
   connectionState: 'connected',
@@ -60,6 +63,8 @@ const baseState: DashboardState = {
   shutdown: null,
   gatewayCapabilities: [],
   scopeHints: [],
+  progressCards: {},
+  activeRunIds: [],
 };
 
 describe('dashboard renderers', () => {
@@ -1240,6 +1245,110 @@ describe('dashboard renderers', () => {
     expect(html).toContain('and 5 more files');
     // Should NOT render file 20+
     expect(html).not.toContain('src/file-20.ts');
+  });
+
+  // --- Agent progress cards (gateway >= 2026.9) ---
+
+  describe('normalizeProgressCard', () => {
+    it('normalizes a valid card payload', () => {
+      const card = normalizeProgressCard(
+        {
+          sessionKey: 'agent:ceo:main',
+          agentId: 'ceo',
+          title: 'Migration work',
+          steps: [
+            { step: 'pull main', status: 'completed' },
+            { step: 'fix deps', status: 'in_progress' },
+            { step: 'run tests', status: 'pending' },
+          ],
+          updatedAt: '2026-09-14T17:00:00Z',
+        },
+        'agent:ceo:main',
+      );
+      expect(card).not.toBeNull();
+      expect(card?.sessionKey).toBe('agent:ceo:main');
+      expect(card?.agentId).toBe('ceo');
+      expect(card?.title).toBe('Migration work');
+      expect(card?.steps).toHaveLength(3);
+      expect(card?.steps[1]).toEqual({ step: 'fix deps', status: 'in_progress' });
+    });
+
+    it('falls back to the caller-supplied session key', () => {
+      const card = normalizeProgressCard({ steps: [] }, 'agent:ops:main');
+      expect(card?.sessionKey).toBe('agent:ops:main');
+    });
+
+    it('skips malformed step entries and defaults unknown statuses to pending', () => {
+      const card = normalizeProgressCard(
+        {
+          sessionKey: 'agent:ceo:main',
+          steps: [
+            { step: 'valid', status: 'completed' },
+            'garbage',
+            null,
+            { status: 'in_progress' }, // no step name — skipped
+            { step: 'weird status', status: 'bananas' },
+          ],
+        },
+        'agent:ceo:main',
+      );
+      expect(card?.steps).toHaveLength(2);
+      expect(card?.steps[0]).toEqual({ step: 'valid', status: 'completed' });
+      expect(card?.steps[1]).toEqual({ step: 'weird status', status: 'pending' });
+    });
+
+    it('returns null when no usable session key exists', () => {
+      expect(normalizeProgressCard({ steps: [] })).toBeNull();
+      expect(normalizeProgressCard(null, '')).toBeNull();
+    });
+
+    it('tolerates absent optional fields', () => {
+      const card = normalizeProgressCard(
+        { sessionKey: 'agent:ceo:main', steps: [{ step: 'only step', status: 'completed' }] },
+        'agent:ceo:main',
+      );
+      expect(card?.agentId).toBeUndefined();
+      expect(card?.title).toBeUndefined();
+      expect(card?.updatedAt).toBeUndefined();
+    });
+  });
+
+  describe('renderProgressCardRows', () => {
+    const card: ProgressCard = {
+      sessionKey: 'agent:ceo:main',
+      title: 'Migration work',
+      steps: [
+        { step: 'pull main', status: 'completed' },
+        { step: 'fix deps', status: 'in_progress' },
+        { step: 'run tests', status: 'pending' },
+      ],
+    };
+
+    it('renders title, progress bar, and the in-progress step', () => {
+      const html = renderProgressCardRows({ 'agent:ceo:main': card }, []);
+      expect(html).toContain('Migration work');
+      expect(html).toContain('1/3');
+      expect(html).toContain('fix deps');
+    });
+
+    it('shows the live marker only for sessions in activeRunIds', () => {
+      const html = renderProgressCardRows({ 'agent:ceo:main': card }, ['agent:ceo:main']);
+      expect(html).toContain('● live');
+
+      const htmlInactive = renderProgressCardRows({ 'agent:ceo:main': card }, []);
+      expect(htmlInactive).not.toContain('● live');
+    });
+
+    it('renders an empty-state row when no cards exist', () => {
+      const html = renderProgressCardRows({}, null);
+      expect(html).toContain('No progress cards loaded.');
+    });
+
+    it('falls back to sessionKey when the card has no title', () => {
+      const untitled: ProgressCard = { sessionKey: 'agent:pfy:main', steps: [] };
+      const html = renderProgressCardRows({ 'agent:pfy:main': untitled }, null);
+      expect(html).toContain('agent:pfy:main');
+    });
   });
 
 });

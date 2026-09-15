@@ -614,6 +614,31 @@ export interface MemoryStatusResponse {
   };
 }
 
+/** Normalized progress card from `progressCard.get` (agent-scoped, gateway ≥ 2026.9).
+ *
+ * The gateway publishes one card per session (addressable by `sessionKey`, plus
+ * `agentId` under agent-scope) with at most 50 steps and at most one step
+ * `in_progress` at a time. Events: `progressCard.changed`.
+ *
+ * Tolerant by design: only `steps` is guaranteed — everything else is optional
+ * so an older/gateway-variant payload still normalizes.
+ */
+export interface ProgressCard {
+  /** Session key the card belongs to (e.g. `agent:ceo:main`). */
+  sessionKey: string;
+  /** Owning agent id when the gateway advertises agent-scoped cards. */
+  agentId?: string;
+  /** Human-readable card title. */
+  title?: string;
+  /** Step list — max 50 entries, at most one `in_progress` at a time. */
+  steps: Array<{
+    step: string;
+    status: "pending" | "in_progress" | "completed";
+  }>;
+  /** ISO timestamp of the last card update. */
+  updatedAt?: string;
+}
+
 // --- RPC response types (panels with working RPC data sources) ---
 
 /** File status entry from `agents.files.list` RPC. */
