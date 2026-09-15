@@ -16,25 +16,42 @@
  * @module server-service
  */
 
-import { GatewayClient } from './client';
+import { GatewayClient } from "./client";
 import {
-  normalizeAgents, normalizeChannelsStatus, normalizeConfigData, normalizeCronJobs,
-  normalizeCronRuns, normalizeCronScheduler, normalizeFileStatus,
-  normalizeHealth, normalizeMemoryStatus,
-  normalizeModels, normalizePresence, normalizeSessionDetails, normalizeSessions,
-  normalizeSkillsStatus, normalizeStatus, normalizeToolsCatalog, normalizeUsageCost,
+  normalizeAgents,
+  normalizeChannelsStatus,
+  normalizeConfigData,
+  normalizeCronJobs,
+  normalizeCronRuns,
+  normalizeCronScheduler,
+  normalizeFileStatus,
+  normalizeHealth,
+  normalizeMemoryStatus,
+  normalizeModels,
+  normalizePresence,
+  normalizeSessionDetails,
+  normalizeSessions,
+  normalizeSkillsStatus,
+  normalizeStatus,
+  normalizeToolsCatalog,
+  normalizeUsageCost,
   normalizeUsageStatus,
   countSessionsByAgent,
-} from '../dashboard/adapters';
-import type { EventFrame, ConnectionState } from './types';
-import type { FileStatusEntry, ConfigResponse, SessionDetailEntry } from './types';
-import { CLIENT_VERSION } from './protocol';
+} from "../dashboard/adapters";
+import type { EventFrame, ConnectionState } from "./types";
+import type {
+  FileStatusEntry,
+  ConfigResponse,
+  SessionDetailEntry,
+} from "./types";
+import { CLIENT_VERSION } from "./protocol";
+import { DASHBOARD_CAPABILITIES } from "./capabilities";
 
 /** Parse comma-separated gateway scopes from env into a trimmed array. */
 function parseGatewayScopes(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   const scopes = value
-    .split(',')
+    .split(",")
     .map((scope) => scope.trim())
     .filter((scope) => scope.length > 0);
   return scopes.length > 0 ? scopes : undefined;
@@ -50,7 +67,9 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
  * range input, in which case the caller falls back to the compiled
  * `PROTOCOL_VERSION` via `options.maxProtocol ?? PROTOCOL_VERSION`.
  */
-export function parseMaxProtocol(value: string | undefined): number | undefined {
+export function parseMaxProtocol(
+  value: string | undefined,
+): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 3) return undefined;
@@ -70,11 +89,11 @@ export const SERVICE_CONFIG = {
   /** Maximum events retained in the server-side ring buffer. */
   MAX_EVENTS: 500,
   /** Default gateway WebSocket URL. */
-  DEFAULT_GATEWAY_URL: 'ws://localhost:18789/ws',
+  DEFAULT_GATEWAY_URL: "ws://localhost:18789/ws",
   /** Fallback gateway WebSocket URL. */
-  FALLBACK_GATEWAY_URL: 'ws://127.0.0.1:18789/ws',
+  FALLBACK_GATEWAY_URL: "ws://127.0.0.1:18789/ws",
   /** Default gateway HTTP base URL (used for SSE and REST endpoints). */
-  DEFAULT_GATEWAY_HTTP_URL: 'http://127.0.0.1:18789',
+  DEFAULT_GATEWAY_HTTP_URL: "http://127.0.0.1:18789",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -111,8 +130,22 @@ export interface DashboardSnapshot {
   serverVersion: string | null;
   availableMethods: string[];
   availableEvents: string[];
-  updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
+  updateAvailable: {
+    currentVersion: string;
+    latestVersion: string;
+    channel: string;
+  } | null;
   shutdown: { reason: string; restartExpectedMs?: number } | null;
+  /** Client-capability registry the gateway advertised (empty pre-2026.8 gateways). */
+  gatewayCapabilities: string[];
+  /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
+  scopeHints: ScopeHint[];
+}
+
+/** A panel-visible hint that an RPC failed only for lack of operator scopes. */
+export interface ScopeHint {
+  method: string;
+  missingScopes: string[];
 }
 
 /** Listener for server-side events forwarded to browser SSE clients. @internal */
@@ -146,10 +179,12 @@ export class GatewayServerService {
   private snapshotListeners = new Set<SnapshotUpdatedListener>();
   private initialized = false;
   private initializeInFlight: Promise<void> | null = null;
+  /** Per-method scope hints captured during the current refresh cycle. */
+  private scopeHints: ScopeHint[] = [];
 
   /** Cached dashboard data. */
   private cache: DashboardSnapshot = {
-    connectionState: 'idle',
+    connectionState: "idle",
     lastUpdatedAt: null,
     lastSuccessfulSnapshotAt: null,
     stale: true,
@@ -179,33 +214,41 @@ export class GatewayServerService {
     availableEvents: [],
     updateAvailable: null,
     shutdown: null,
+    gatewayCapabilities: [],
+    scopeHints: [],
   };
 
   constructor() {
-    const gatewayUrl = process.env.OPENCLAW_GATEWAY_WS_URL
-      ?? SERVICE_CONFIG.DEFAULT_GATEWAY_URL;
-    const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
-    const gatewayScopes = parseGatewayScopes(process.env.OPENCLAW_GATEWAY_SCOPES);
+    const gatewayUrl =
+      process.env.OPENCLAW_GATEWAY_WS_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_URL;
+    const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+    const gatewayScopes = parseGatewayScopes(
+      process.env.OPENCLAW_GATEWAY_SCOPES,
+    );
 
     this.client = new GatewayClient({
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'openclaw-control-ui',
-      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'webchat',
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? "openclaw-control-ui",
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? "webchat",
       clientVersion: CLIENT_VERSION,
-      clientDisplayName: 'ClawSprawl Dashboard (SSR)',
-      role: 'operator',
+      clientDisplayName: "ClawSprawl Dashboard (SSR)",
+      role: "operator",
       scopes: gatewayScopes,
       reconnect: true,
-      origin: process.env.OPENCLAW_GATEWAY_HTTP_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
+      origin:
+        process.env.OPENCLAW_GATEWAY_HTTP_URL ??
+        SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
       deviceId: process.env.CLAWSPRAWL_DEVICE_ID,
       devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
       devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
       deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
       // Advertise only capabilities the dashboard implements. `agent-kind` opts
-      // into the typed `agents.list` roster (system vs agent rows).
-      caps: ['agent-kind'],
+      // into the typed `agents.list` roster (system vs agent rows); tool-events /
+      // session-scoped-events / usage-refreshing describe how events and usage
+      // panels are consumed (see src/lib/gateway/capabilities.ts).
+      caps: [...DASHBOARD_CAPABILITIES],
       // Forward-compat: allow negotiating a newer wire protocol via env when a
       // future OpenClaw release bumps protocol v5, without a code change.
       maxProtocol: parseMaxProtocol(process.env.OPENCLAW_GATEWAY_MAX_PROTOCOL),
@@ -213,18 +256,22 @@ export class GatewayServerService {
 
     this.client.onStateChange((state) => {
       this.cache.connectionState = state;
-      if (state === 'reconnecting' || state === 'disconnected' || state === 'error') {
+      if (
+        state === "reconnecting" ||
+        state === "disconnected" ||
+        state === "error"
+      ) {
         this.cache.stale = true;
       }
-      if (state === 'reconnecting') {
+      if (state === "reconnecting") {
         this.reconnectCount += 1;
         this.cache.reconnectCount = this.reconnectCount;
       }
-      if (state === 'error') {
+      if (state === "error") {
         this.errorCount += 1;
         this.cache.errorCount = this.errorCount;
       }
-      if (state === 'connected') {
+      if (state === "connected") {
         this.reconnectCount = 0;
         this.cache.reconnectCount = 0;
         this.scheduleRefresh();
@@ -292,6 +339,7 @@ export class GatewayServerService {
 
       this.cache.availableMethods = helloOk.features?.methods ?? [];
       this.cache.availableEvents = helloOk.features?.events ?? [];
+      this.cache.gatewayCapabilities = helloOk.features?.capabilities ?? [];
 
       if (helloOk.snapshot?.updateAvailable) {
         this.cache.updateAvailable = helloOk.snapshot.updateAvailable;
@@ -307,17 +355,20 @@ export class GatewayServerService {
       // `backend` path). Without a paired device the dashboard connects but every
       // data RPC returns MISSING_SCOPE, so the dashboard renders empty.
       const msg = err instanceof Error ? err.message : String(err);
-      if (/CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
-          (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined && /MISSING_SCOPE.*operator\.read/i.test(msg))) {
+      if (
+        /CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
+        (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined &&
+          /MISSING_SCOPE.*operator\.read/i.test(msg))
+      ) {
         console.warn(
-          '[clawsprawl:server] gateway requires a paired operator device for operator.read. ' +
-          'Generate a device identity with `npm run setup:device` and set ' +
-          'CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the ' +
-          'pending pairing on the gateway with `openclaw devices approve <id>`).',
+          "[clawsprawl:server] gateway requires a paired operator device for operator.read. " +
+            "Generate a device identity with `npm run setup:device` and set " +
+            "CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the " +
+            "pending pairing on the gateway with `openclaw devices approve <id>`).",
         );
       }
-      console.warn('[clawsprawl:server] gateway bootstrap failed:', err);
-      this.cache.connectionState = 'error';
+      console.warn("[clawsprawl:server] gateway bootstrap failed:", err);
+      this.cache.connectionState = "error";
       this.initialized = false;
     }
   }
@@ -337,7 +388,10 @@ export class GatewayServerService {
    * @param sinceSeq - Sequence number after which to return events.
    * @returns An object containing the matching events and the latest sequence number.
    */
-  getEventsSince(sinceSeq: number): { events: (EventFrame & { seq: number })[]; latestSeq: number } {
+  getEventsSince(sinceSeq: number): {
+    events: (EventFrame & { seq: number })[];
+    latestSeq: number;
+  } {
     const events = this.eventBuffer
       .filter((e) => ((e as EventFrame & { seq: number }).seq ?? 0) > sinceSeq)
       .map((e) => e as EventFrame & { seq: number });
@@ -352,7 +406,9 @@ export class GatewayServerService {
    */
   onEvent(listener: ServerEventListener): () => void {
     this.eventListeners.add(listener);
-    return () => { this.eventListeners.delete(listener); };
+    return () => {
+      this.eventListeners.delete(listener);
+    };
   }
 
   /**
@@ -365,7 +421,9 @@ export class GatewayServerService {
    */
   onSnapshotUpdated(listener: SnapshotUpdatedListener): () => void {
     this.snapshotListeners.add(listener);
-    return () => { this.snapshotListeners.delete(listener); };
+    return () => {
+      this.snapshotListeners.delete(listener);
+    };
   }
 
   /** Current gateway connection state. */
@@ -377,22 +435,30 @@ export class GatewayServerService {
 
   /** Handle special gateway events that drive dedicated UI surfaces (banners, state). */
   private handleGatewayEvent(event: EventFrame): void {
-    if (event.event === 'update.available') {
+    if (event.event === "update.available") {
       const payload = event.payload as Record<string, unknown> | undefined;
-      if (payload && typeof payload.latestVersion === 'string' && typeof payload.currentVersion === 'string') {
+      if (
+        payload &&
+        typeof payload.latestVersion === "string" &&
+        typeof payload.currentVersion === "string"
+      ) {
         this.cache.updateAvailable = {
           currentVersion: payload.currentVersion,
           latestVersion: payload.latestVersion,
-          channel: typeof payload.channel === 'string' ? payload.channel : 'stable',
+          channel:
+            typeof payload.channel === "string" ? payload.channel : "stable",
         };
       }
-    } else if (event.event === 'shutdown') {
+    } else if (event.event === "shutdown") {
       const payload = event.payload as Record<string, unknown> | undefined;
       this.cache.shutdown = {
-        reason: typeof payload?.reason === 'string' ? payload.reason : 'shutdown',
-        ...(typeof payload?.restartExpectedMs === 'number' ? { restartExpectedMs: payload.restartExpectedMs } : {}),
+        reason:
+          typeof payload?.reason === "string" ? payload.reason : "shutdown",
+        ...(typeof payload?.restartExpectedMs === "number"
+          ? { restartExpectedMs: payload.restartExpectedMs }
+          : {}),
       };
-    } else if (event.event === 'health' || event.event === 'tick') {
+    } else if (event.event === "health" || event.event === "tick") {
       // Clear shutdown banner when gateway is alive again
       if (this.cache.shutdown) {
         this.cache.shutdown = null;
@@ -409,7 +475,11 @@ export class GatewayServerService {
       this.eventBuffer = this.eventBuffer.slice(-SERVICE_CONFIG.MAX_EVENTS);
     }
     for (const listener of this.eventListeners) {
-      try { listener(stamped); } catch { /* swallow listener errors */ }
+      try {
+        listener(stamped);
+      } catch {
+        /* swallow listener errors */
+      }
     }
   }
 
@@ -439,7 +509,11 @@ export class GatewayServerService {
    * @param normalizer - Normalizer function to apply to the raw data.
    * @returns The normalized result, or `undefined` if `raw` is null or the normalizer throws.
    */
-  private safeNormalize<T>(label: string, raw: unknown, normalizer: (data: unknown) => T): T | undefined {
+  private safeNormalize<T>(
+    label: string,
+    raw: unknown,
+    normalizer: (data: unknown) => T,
+  ): T | undefined {
     if (!raw) return undefined;
     try {
       return normalizer(raw);
@@ -449,64 +523,196 @@ export class GatewayServerService {
     }
   }
 
+  /**
+   * Is an RPC method advertised by the connected gateway?
+   *
+   * Reads `hello-ok.features.methods` from the last successful handshake.
+   * When disconnected (no handshake yet) every method is treated as
+   * unavailable so calls resolve null immediately instead of erroring.
+   */
+  private canCall(method: string): boolean {
+    return this.client.availableMethods?.includes(method) ?? false;
+  }
+
+  /**
+   * Call an RPC only when the gateway advertises it; otherwise resolve null
+   * (identical to a failed call, so normalizers/panels treat it as absent).
+   * Gate on the advertised surface so panels degrade gracefully against
+   * gateways that lack a method instead of logging a per-refresh error.
+   *
+   * Structured FORBIDDEN/MISSING_SCOPE rejections (gateway ≥ 2026.9.3) are
+   * captured as per-method scope hints so panels can render "requires scope
+   * X" instead of an unexplained blank.
+   *
+   * @param method - RPC method name to invoke.
+   * @returns The raw response payload, or null when unavailable/failed.
+   */
+  private callIfAvailable(method: string): Promise<unknown> {
+    if (!this.canCall(method)) return Promise.resolve(null);
+    return this.client
+      .call(method)
+      .catch((err: Error & { code?: string; missingScopes?: string[] }) => {
+        if (
+          err.code === "FORBIDDEN" &&
+          Array.isArray(err.missingScopes) &&
+          err.missingScopes.length > 0
+        ) {
+          this.scopeHints = this.scopeHints.filter(
+            (hint) => hint.method !== method,
+          );
+          this.scopeHints.push({
+            method,
+            missingScopes: [...err.missingScopes],
+          });
+        }
+        return null;
+      });
+  }
+
   /** Notify all snapshot listeners that a fresh snapshot is available. */
   private notifySnapshotUpdated(): void {
     for (const listener of this.snapshotListeners) {
-      try { listener(); } catch { /* swallow listener errors */ }
+      try {
+        listener();
+      } catch {
+        /* swallow listener errors */
+      }
     }
   }
 
   /** Fetch all dashboard data via RPC calls. */
   private async refreshData(): Promise<void> {
-    if (this.refreshInFlight || this.client.connectionState !== 'connected') return;
+    if (this.refreshInFlight || this.client.connectionState !== "connected")
+      return;
 
     this.refreshInFlight = true;
 
     try {
-      // Parallel RPC fetches — all data comes from the gateway WebSocket
-      const [status, agents, sessions, cronJobs, cronRuns, models, health, presence, usageCost, usageStatus, toolsCatalog, skillsStatus, channelsStatus, cronScheduler, memoryStatus, configData, fileStatus] = await Promise.all([
-        this.client.call('status').catch(() => null),
-        this.client.call('agents.list').catch(() => null),
-        this.client.call('sessions.list').catch(() => null),
-        this.client.call('cron.list').catch(() => null),
-        this.client.call('cron.runs').catch(() => null),
-        this.client.call('models.list').catch(() => null),
-        this.client.call('health').catch(() => null),
-        this.client.call('system-presence').catch(() => null),
-        this.client.call('usage.cost').catch(() => null),
-        this.client.call('usage.status').catch(() => null),
-        this.client.call('tools.catalog').catch(() => null),
-        this.client.call('skills.status').catch(() => null),
-        this.client.call('channels.status').catch(() => null),
-        this.client.call('cron.status').catch(() => null),
-        this.client.call('doctor.memory.status').catch(() => null),
-        this.client.call('config.get').catch(() => null),
-        this.client.call('agents.files.list').catch(() => null),
+      // Parallel RPC fetches — all data comes from the gateway WebSocket.
+      // callIfAvailable gates on the gateway-advertised method surface so a
+      // gateway lacking a method yields null (absent panel data) instead of
+      // an error log every refresh.
+      const [
+        status,
+        agents,
+        sessions,
+        cronJobs,
+        cronRuns,
+        models,
+        health,
+        presence,
+        usageCost,
+        usageStatus,
+        toolsCatalog,
+        skillsStatus,
+        channelsStatus,
+        cronScheduler,
+        memoryStatus,
+        configData,
+        fileStatus,
+      ] = await Promise.all([
+        this.callIfAvailable("status"),
+        this.callIfAvailable("agents.list"),
+        this.callIfAvailable("sessions.list"),
+        this.callIfAvailable("cron.list"),
+        this.callIfAvailable("cron.runs"),
+        this.callIfAvailable("models.list"),
+        this.callIfAvailable("health"),
+        this.callIfAvailable("system-presence"),
+        this.callIfAvailable("usage.cost"),
+        this.callIfAvailable("usage.status"),
+        this.callIfAvailable("tools.catalog"),
+        this.callIfAvailable("skills.status"),
+        this.callIfAvailable("channels.status"),
+        this.callIfAvailable("cron.status"),
+        this.callIfAvailable("doctor.memory.status"),
+        this.callIfAvailable("config.get"),
+        this.callIfAvailable("agents.files.list"),
       ]);
 
       // Each normalizer is wrapped individually so one failure cannot block
       // others from caching their results. This is critical for resilience
       // against unexpected gateway response shapes.
-      const nStatus = this.safeNormalize('status', status, (d) => normalizeStatus(d as Record<string, unknown>));
-      const nAgents = this.safeNormalize('agents', agents, normalizeAgents);
-      const nSessions = this.safeNormalize('sessions', sessions, normalizeSessions);
-      const nCronJobs = this.safeNormalize('cronJobs', cronJobs, normalizeCronJobs);
-      const nCronRuns = this.safeNormalize('cronRuns', cronRuns, normalizeCronRuns);
-      const nModels = this.safeNormalize('models', models, normalizeModels);
-      const nHealth = this.safeNormalize('health', health, (d) => normalizeHealth(d as Record<string, unknown>));
-      const nPresence = this.safeNormalize('presence', presence, normalizePresence);
-      const nUsageCost = this.safeNormalize('usageCost', usageCost, normalizeUsageCost);
-      const nUsageStatus = this.safeNormalize('usageStatus', usageStatus, normalizeUsageStatus);
-      const nToolsCatalog = this.safeNormalize('toolsCatalog', toolsCatalog, normalizeToolsCatalog);
-      const nSkillsStatus = this.safeNormalize('skillsStatus', skillsStatus, normalizeSkillsStatus);
-      const nChannelsStatus = this.safeNormalize('channelsStatus', channelsStatus, normalizeChannelsStatus);
-      const nCronScheduler = this.safeNormalize('cronScheduler', cronScheduler, normalizeCronScheduler);
-      const nMemoryStatus = this.safeNormalize('memoryStatus', memoryStatus, normalizeMemoryStatus);
-      const nConfigData = this.safeNormalize('configData', configData, normalizeConfigData);
-      const nFileStatus = this.safeNormalize('fileStatus', fileStatus, normalizeFileStatus);
+      const nStatus = this.safeNormalize("status", status, (d) =>
+        normalizeStatus(d as Record<string, unknown>),
+      );
+      const nAgents = this.safeNormalize("agents", agents, normalizeAgents);
+      const nSessions = this.safeNormalize(
+        "sessions",
+        sessions,
+        normalizeSessions,
+      );
+      const nCronJobs = this.safeNormalize(
+        "cronJobs",
+        cronJobs,
+        normalizeCronJobs,
+      );
+      const nCronRuns = this.safeNormalize(
+        "cronRuns",
+        cronRuns,
+        normalizeCronRuns,
+      );
+      const nModels = this.safeNormalize("models", models, normalizeModels);
+      const nHealth = this.safeNormalize("health", health, (d) =>
+        normalizeHealth(d as Record<string, unknown>),
+      );
+      const nPresence = this.safeNormalize(
+        "presence",
+        presence,
+        normalizePresence,
+      );
+      const nUsageCost = this.safeNormalize(
+        "usageCost",
+        usageCost,
+        normalizeUsageCost,
+      );
+      const nUsageStatus = this.safeNormalize(
+        "usageStatus",
+        usageStatus,
+        normalizeUsageStatus,
+      );
+      const nToolsCatalog = this.safeNormalize(
+        "toolsCatalog",
+        toolsCatalog,
+        normalizeToolsCatalog,
+      );
+      const nSkillsStatus = this.safeNormalize(
+        "skillsStatus",
+        skillsStatus,
+        normalizeSkillsStatus,
+      );
+      const nChannelsStatus = this.safeNormalize(
+        "channelsStatus",
+        channelsStatus,
+        normalizeChannelsStatus,
+      );
+      const nCronScheduler = this.safeNormalize(
+        "cronScheduler",
+        cronScheduler,
+        normalizeCronScheduler,
+      );
+      const nMemoryStatus = this.safeNormalize(
+        "memoryStatus",
+        memoryStatus,
+        normalizeMemoryStatus,
+      );
+      const nConfigData = this.safeNormalize(
+        "configData",
+        configData,
+        normalizeConfigData,
+      );
+      const nFileStatus = this.safeNormalize(
+        "fileStatus",
+        fileStatus,
+        normalizeFileStatus,
+      );
 
       // Session details derived from sessions.list — no separate RPC needed
-      const nSessionDetails = this.safeNormalize('sessionDetails', sessions, normalizeSessionDetails);
+      const nSessionDetails = this.safeNormalize(
+        "sessionDetails",
+        sessions,
+        normalizeSessionDetails,
+      );
 
       if (nStatus !== undefined) this.cache.status = nStatus;
       if (nAgents !== undefined) this.cache.agents = nAgents;
@@ -514,7 +720,8 @@ export class GatewayServerService {
         this.cache.sessions = nSessions;
         this.cache.sessionsByAgent = countSessionsByAgent(nSessions);
       }
-      if (nSessionDetails !== undefined) this.cache.sessionDetails = nSessionDetails;
+      if (nSessionDetails !== undefined)
+        this.cache.sessionDetails = nSessionDetails;
       if (nCronJobs !== undefined) this.cache.cronJobs = nCronJobs;
       if (nCronRuns !== undefined) this.cache.cronRuns = nCronRuns;
       if (nModels !== undefined) this.cache.models = nModels;
@@ -524,8 +731,10 @@ export class GatewayServerService {
       if (nUsageStatus !== undefined) this.cache.usageStatus = nUsageStatus;
       if (nToolsCatalog !== undefined) this.cache.toolsCatalog = nToolsCatalog;
       if (nSkillsStatus !== undefined) this.cache.skillsStatus = nSkillsStatus;
-      if (nChannelsStatus !== undefined) this.cache.channelsStatus = nChannelsStatus;
-      if (nCronScheduler !== undefined) this.cache.cronScheduler = nCronScheduler;
+      if (nChannelsStatus !== undefined)
+        this.cache.channelsStatus = nChannelsStatus;
+      if (nCronScheduler !== undefined)
+        this.cache.cronScheduler = nCronScheduler;
       if (nMemoryStatus !== undefined) this.cache.memoryStatus = nMemoryStatus;
       if (nConfigData !== undefined) this.cache.configData = nConfigData;
       if (nFileStatus !== undefined) this.cache.fileStatus = nFileStatus;
@@ -534,9 +743,13 @@ export class GatewayServerService {
       this.cache.lastUpdatedAt = now;
       this.cache.lastSuccessfulSnapshotAt = now;
       this.cache.stale = false;
+      // Publish hints captured during THIS refresh, then reset for the next —
+      // a hint that stops appearing means the scope issue was resolved.
+      this.cache.scopeHints = [...this.scopeHints];
+      this.scopeHints = [];
       this.notifySnapshotUpdated();
     } catch (err) {
-      console.warn('[clawsprawl:server] data refresh failed:', err);
+      console.warn("[clawsprawl:server] data refresh failed:", err);
       this.cache.stale = true;
     } finally {
       this.refreshInFlight = false;

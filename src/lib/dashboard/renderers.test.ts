@@ -58,6 +58,8 @@ const baseState: DashboardState = {
   sessionDetails: null,
   updateAvailable: null,
   shutdown: null,
+  gatewayCapabilities: [],
+  scopeHints: [],
 };
 
 describe('dashboard renderers', () => {

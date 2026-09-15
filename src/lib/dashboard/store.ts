@@ -20,6 +20,7 @@ import type {
   UsageCostResponse,
   UsageStatusResponse,
 } from '../gateway/types';
+import type { ScopeHint } from '../gateway/server-service';
 
 /** Complete state snapshot for the dashboard UI. */
 export interface DashboardState {
@@ -62,6 +63,10 @@ export interface DashboardState {
   updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
   /** Shutdown notification from `shutdown` event. */
   shutdown: { reason: string; restartExpectedMs?: number } | null;
+  /** Client-capability registry the gateway advertised (empty on older gateways). */
+  gatewayCapabilities: string[];
+  /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
+  scopeHints: ScopeHint[];
 }
 
 /** Snapshot payload shape returned by dashboard snapshot API routes. */
@@ -91,6 +96,10 @@ export interface DashboardSnapshotPayload {
   sessionDetails?: SessionDetailEntry[] | null;
   updateAvailable?: { currentVersion: string; latestVersion: string; channel: string } | null;
   shutdown?: { reason: string; restartExpectedMs?: number } | null;
+  /** Client-capability registry the gateway advertised (empty on older gateways). */
+  gatewayCapabilities?: string[];
+  /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
+  scopeHints?: ScopeHint[];
 }
 
 type StateListener = (state: DashboardState) => void;
@@ -123,6 +132,8 @@ const DEFAULT_STATE: DashboardState = {
   sessionDetails: null,
   updateAvailable: null,
   shutdown: null,
+  gatewayCapabilities: [],
+  scopeHints: [],
 };
 
 /** Maximum events retained in the ring buffer (default 200). */

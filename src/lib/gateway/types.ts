@@ -9,19 +9,19 @@
  * The 7-state machine governs valid transitions (see state-machine.ts).
  */
 export type ConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'handshaking'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'error';
+  | "idle"
+  | "connecting"
+  | "handshaking"
+  | "connected"
+  | "reconnecting"
+  | "disconnected"
+  | "error";
 
 // --- Wire frame types ---
 
 /** Client → gateway request frame. */
 export interface RequestFrame {
-  type: 'req';
+  type: "req";
   id: string;
   method: string;
   params?: unknown;
@@ -29,7 +29,7 @@ export interface RequestFrame {
 
 /** Gateway → client response frame. */
 export interface ResponseFrame {
-  type: 'res';
+  type: "res";
   id: string;
   ok: boolean;
   payload?: unknown;
@@ -38,7 +38,7 @@ export interface ResponseFrame {
 
 /** Gateway → client (or broadcast) event frame. */
 export interface EventFrame {
-  type: 'event';
+  type: "event";
   event: string;
   payload?: unknown;
   seq?: number;
@@ -127,6 +127,8 @@ export interface HelloOkServer {
 export interface HelloOkFeatures {
   methods: string[];
   events: string[];
+  /** Client-capability registry entries the gateway honors (optional on older gateways). */
+  capabilities?: string[];
 }
 
 /** Connection policy limits from the HelloOk handshake response. */
@@ -173,7 +175,7 @@ export interface Snapshot {
   configPath?: string;
   stateDir?: string;
   sessionDefaults?: SessionDefaults;
-  authMode?: 'none' | 'token' | 'password' | 'trusted-proxy';
+  authMode?: "none" | "token" | "password" | "trusted-proxy";
   updateAvailable?: {
     currentVersion: string;
     latestVersion: string;
@@ -198,7 +200,7 @@ export interface HelloOkAuth {
 
 /** Successful handshake response from the gateway (protocol, server, features, snapshot). */
 export interface HelloOk {
-  type: 'hello-ok';
+  type: "hello-ok";
   protocol: number;
   server: HelloOkServer;
   features: HelloOkFeatures;
@@ -424,7 +426,7 @@ export interface GatewayClientOptions {
    * Typically set to the gateway's own HTTP base URL (e.g. `http://127.0.0.1:18789`).
    * Ignored in browser environments where the browser sets Origin automatically.
    */
-   origin?: string;
+  origin?: string;
   /** Device ID for v4 device identity (enables non-loopback gateway support). */
   deviceId?: string;
   /** Device Ed25519 public key (PEM format) for v4 nonce signing. */
@@ -564,13 +566,16 @@ export interface ChannelsStatusResponse {
   ts: number;
   channelOrder: string[];
   channelLabels: Record<string, string>;
-  channels: Record<string, {
-    configured: boolean;
-    running: boolean;
-    lastStartAt: number | null;
-    lastStopAt: number | null;
-    lastError: string | null;
-  }>;
+  channels: Record<
+    string,
+    {
+      configured: boolean;
+      running: boolean;
+      lastStartAt: number | null;
+      lastStopAt: number | null;
+      lastError: string | null;
+    }
+  >;
   channelAccounts: Record<string, ChannelAccountDetail[]>;
 }
 

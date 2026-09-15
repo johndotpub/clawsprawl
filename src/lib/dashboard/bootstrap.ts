@@ -224,6 +224,8 @@ function applySnapshotToStore(store: DashboardStore, snapshot: DashboardSnapshot
     sessionDetails: snapshot.sessionDetails,
     updateAvailable: snapshot.updateAvailable,
     shutdown: snapshot.shutdown,
+    gatewayCapabilities: snapshot.gatewayCapabilities ?? [],
+    scopeHints: snapshot.scopeHints ?? [],
   });
 }
 

@@ -180,6 +180,9 @@ export function buildPublicSnapshot(snapshot: DashboardSnapshot): PublicSnapshot
     availableEvents: [],
     updateAvailable: snapshot.updateAvailable,
     shutdown: snapshot.shutdown,
+    // Capability/scope metadata is gateway-recon surface — public view stays blind.
+    gatewayCapabilities: [],
+    scopeHints: [],
   };
 }
 
