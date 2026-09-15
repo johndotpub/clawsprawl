@@ -74,6 +74,7 @@ _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sw
 - Surface an actionable bootstrap hint when the gateway requires a paired device (CONTROL_UI_DEVICE_IDENTITY_REQUIRED) or returns MISSING_SCOPE without a configured device.
 - Fix `docs:screenshots`: it set `CLAWSPRAWL_MODE=token` (which the spec skips — it only captures in `public`/`insecure`) and hardcoded the scope-less `backend` identity. It now runs both `public` and `insecure` passes and inherits the device-paired client identity from the environment.
 - Refresh the four docs screenshots against a live OpenClaw 2026.7.2-beta.7 gateway (5 agents, 14 models).
+- Re-capture all four docs screenshots against a live **OpenClaw 2026.9.4** gateway: private-unlocked view now shows the new Phase 3 panels (Task Ledger, Agent Progress, Usage Trend, Activity Summary, Skills Approvals, Process Monitor) with live fleet data; public-locked view verified to keep the new task/audit/config/skill surfaces redacted.
 
 ### Changed — Docs
 - Update README Astro badge (6.x → 7.x), architecture-overview protocol label (v3 → v4), the OpenClaw capability audit (newly-stable + removed/renamed methods, protocol v5 tracking), and the heredoc API/sourcecode method list.
