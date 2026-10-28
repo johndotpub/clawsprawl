@@ -59,52 +59,11 @@ Version note: `0.43.0` and `0.44.0` were documented here but **never tagged or r
 - Coverage: 92.66% statements, 82.22% branches, 95.86% functions, 94.10% lines
 - Docs coverage 100% (16/16 required, 4/4 informational)
 
-## [0.42.76 «Recatch»] - 2026-10-28
+### OpenClaw 2026.9 catch-up (merged as PR #98)
 
-> **Interim tag, superseded by 0.67.0.** Tagged on 2026-09-14 (before the dependency work existed) and released on 2026-10-28. Retained as the record of what landed between 0.42.69 and 0.67.0.
+_Landed as a merged pull request, not as a tagged release. The substantive changes are documented under `0.67.0` above._
 
-_OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8/9 protocol surfaces, and automate the dependency pipeline._
-
-### Fixed — Dependency Repair (post mass-merge of 2026-09-14)
-- Repair `npm ci` ERESOLVE on main: `typescript` ^7.0.2 → ^6.0.3 (`@astrojs/check@0.9.10` — latest — peers `^5||^6`; TS7 support lands upstream later). Verified 479/479 tests + clean audits on the fix before the automation work stacked on it.
-- Pin `fast-uri` 3.1.5 → 3.1.7 (SSRF/host-confusion advisories GHSA-w27v-family; `ajv` accepts `^3.0.1`). **Superseded in 0.67.0** — 3.1.7 turned out to sit *inside* the vulnerable range `3.0.0-3.1.8`, so the pin is now 3.1.9.
-- Reconcile stale `allowScripts` (`sharp@0.34.5` → `0.35.4`, matching the merged #90 bump).
-- CI checks that were skipped behind `needs: quality` (e2e, container-build) now always run and report — a skipped check satisfies a required check, which is how the TS7 breakage reached `main` unnoticed.
-- Full-tree (prod+dev) audit demoted from blocking gate to advisory CI job (`dependency-audit`, `continue-on-error`); the required gate is now production-only at `moderate+` (in-suite test + `security.yml`/`publish-gpr.yml`). One transitive dev advisory can no longer wall off every PR.
-- `qa:strict` no longer runs the full-tree audit (it was blocking releases via `publish-gpr.yml`).
-- Restore the `npm audit --omit=dev --audit-level=moderate` gate, which had been failing on `main` since this release and blocking every open pull request — including the Dependabot PRs that carried the fixes themselves.
-- Extend the security `overrides` block with same-major fix floors for the production-tree advisories: `devalue` ^5.9.4, `http-cache-semantics` ^4.3.0, `sharp` ^0.35.5, `smol-toml` ^1.9.1, `source-map-js` ^1.2.2, `undici` ^8.12.3, `vite` ^8.3.5, `zod` ^4.6.7. Overrides were chosen over a blanket `npm audit fix` to avoid pulling `astro` 7.3.2 → 7.4.2 and 88 unrelated production-tree changes into a security fix. The remaining `astro` advisory (GHSA-mpr7-6m5w-76rw) is `low`, below the gate's `moderate` threshold.
-- Keep the advisory full-tree audit green as well: `fast-uri` override `3.1.7` → `3.1.9` (3.1.7 sat *inside* its own vulnerable `3.0.0-3.1.8` range) and `brace-expansion` ^5.0.12.
-### Fixed — Gateway Handshake/Auth (OpenClaw v2026.8.1 contract)
-- Device-proof signatures now use the **gateway-issued `connect.challenge` timestamp** as `signedAt` (falls back to local clock only for pre-challenge servers). Local-clock signatures fail on v2026.8.1+ gateways under clock skew (upstream #116679).
-- Pre-WebSocket handshake failures are classified: HTTP 5xx upgrades / connection-refused reject with `retryable: true` + `code: 'GATEWAY_UNAVAILABLE'`; 4xx auth/misconfig stays non-retryable (upstream #141451).
-- Non-string WebSocket frames (compression/binary) are counted (`client.nonStringFrameCount`) and warn once instead of being silently dropped (upstream #136862).
-- Documented the v2026.8.1 reconnect event-sequence baseline reset (upstream #116043) — this client implements no seq-gap recovery, so no baseline reset is needed; guard comment added.
-
-### Added — Capability Registry & Graceful Degradation
-- `src/lib/gateway/capabilities.ts`: typed capability helpers (`hasCapability`, `advertisedMethods`, `hasMethod`) over the hello-ok feature surface.
-- Dashboard advertises `agent-kind`, `tool-events`, `session-scoped-events`, `usage-refreshing` (all honestly implemented; approval/ui-command surfaces deliberately not claimed — read-only dashboard).
-- `callIfAvailable`/`canCall`: every RPC gates on the gateway-advertised method surface; absent methods yield null (absent panel data) instead of per-refresh error logs.
-- Structured `FORBIDDEN`/`MISSING_SCOPE` rejections captured as per-method `scopeHints` on the snapshot (reset per refresh cycle) so panels can render "requires scope X" hints.
-- `gatewayCapabilities` exposed through the snapshot; the public view stays blind to capability/scope metadata.
-
-### Added — Progress Cards & Active Runs (OpenClaw 2026.9)
-- `progressCard.get` (capability-gated on `progress-card-agent-scope-v1`) for the top-20 most-recently-active sessions, keyed by sessionKey.
-- `progressCard.changed` handled as invalidation-only (payload shapes vary across gateway builds; the next refresh pulls the authoritative card).
-- `activeRunIds` snapshot/delta semantics from `sessions.changed`: omission retains, explicit null clears, arrays replace (non-strings filtered).
-- `renderProgressCardRows`: title, text progress bar, in-progress step, `● live` marker for active sessions; private-only "⏳ Agent Progress" panel.
-
-### Added — Seven Read-Only Fleet Panels
-- Task Ledger (`tasks.list`), Usage Timeseries (`sessions.usage.timeseries`), Node Fleet (`node.list`), Gateway Stability (`diagnostics.stability`), Audit Timeline (`audit.activity.list`), Config Schema (`config.schema`), Skill Proposals (`skills.proposals.list`).
-- All method-gated via `callIfAvailable`, tolerant normalizers (bare-array or object-wrapped payloads, malformed-entry skipping), public view redacts all seven.
-
-### Changed — Dependency Automation
-- `.github/dependabot.yml`: groups restricted to minor/patch (majors open as individual human-reviewed PRs), peer-coupled toolchain (`typescript`, `astro`, `vitest`, `@vitest/*`) excluded from grouping, `rebase-strategy: auto`, staggered schedules (npm Mon / actions Tue / docker Wed), labels + commit-message prefixes.
-- New `.github/workflows/dependabot-auto-merge.yml`: auto-approve + auto-merge for Dependabot minor/patch PRs, gated on the dependabot actor + minor/patch-only + toolchain denylist; `--merge` (ruleset allows merge/rebase only). Hard prerequisites documented in the workflow (owner settings: `allow_auto_merge`, required status checks).
-- Node toolchain aligned with the gateway floor: `.nvmrc` 26.8.2, `engines.node >=26.1.0` (OpenClaw v2026.9.3+ requires Node 24.16+/26.1+; older builds risk SQLite truncation). Dockerfile unchanged — the pinned chainguard digest already ships 26.8.2.
-
-### Verified
-- 459+ unit tests, lint, `qa:strict` (typecheck + coverage + docs + build), prod audit clean — per commit.
+Notable items that landed here and are still current: `typescript` held at ^6.0.3 (TS7 is ecosystem-blocked), `.github/dependabot.yml` groups restricted to minor/patch with the peer-coupled toolchain excluded, `.github/workflows/dependabot-auto-merge.yml` added, and the Node floor raised to 26.1+.
 
 ## [0.44.0 «Uplink»] - 2026-08-02
 

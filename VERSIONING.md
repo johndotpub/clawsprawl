@@ -18,10 +18,9 @@ This repository is published with a clean-room baseline release:
 - `0.43.0`: protocol v4 upgrade, comprehensive event handling (31 event types), OpenTelemetry-focused observability, security hardening, and DRY/code-quality pass.
 - `0.44.0`: Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and OpenClaw v2026.6/7 protocol-robustness catch-up (agent-kind cap, configurable maxProtocol for v5, structured MISSING_SCOPE, v4 event buckets).
 
-> **Note:** `0.43.0` and `0.44.0` were written into this changelog and this list but were never tagged or released. Only `0.42.69` and `0.42.76` carry tags before `0.67.0`.
+> **Note:** `0.43.0` and `0.44.0` were written into this changelog and this list but were never tagged or released. `0.67.0` is the first tagged release since `0.42.69`.
 
-- `0.42.76`: interim tag — OpenClaw 2026.9 catch-up (capability registry, progress cards, seven read-only fleet panels, handshake hardening, Node 26 floor). Tagged 2026-09-14, released 2026-10-28.
-- `0.67.0`: first properly tagged release since `0.42.69`. Restores the production and full-tree dependency audit gates to zero, retires the nine-PR Dependabot backlog in one merge, and reconciles the version history above.
+- `0.67.0`: first tagged release since `0.42.69`. Restores the production and full-tree dependency audit gates to zero, retires the nine-PR Dependabot backlog in one merge, ships the OpenClaw 2026.9 catch-up, and reconciles the version history above.
 
 ## Release Workflow
 
