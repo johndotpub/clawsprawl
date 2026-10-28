@@ -15,6 +15,9 @@ _OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8
 - CI checks that were skipped behind `needs: quality` (e2e, container-build) now always run and report — a skipped check satisfies a required check, which is how the TS7 breakage reached `main` unnoticed.
 - Full-tree (prod+dev) audit demoted from blocking gate to advisory CI job (`dependency-audit`, `continue-on-error`); the required gate is now production-only at `moderate+` (in-suite test + `security.yml`/`publish-gpr.yml`). One transitive dev advisory can no longer wall off every PR.
 - `qa:strict` no longer runs the full-tree audit (it was blocking releases via `publish-gpr.yml`).
+- Restore the `npm audit --omit=dev --audit-level=moderate` gate, which had been failing on `main` since this release and blocking every open pull request — including the Dependabot PRs that carried the fixes themselves.
+- Extend the security `overrides` block with same-major fix floors for the production-tree advisories: `devalue` ^5.9.4, `http-cache-semantics` ^4.3.0, `sharp` ^0.35.5, `smol-toml` ^1.9.1, `source-map-js` ^1.2.2, `undici` ^8.12.3, `vite` ^8.3.5, `zod` ^4.6.7. Overrides were chosen over a blanket `npm audit fix` to avoid pulling `astro` 7.3.2 → 7.4.2 and 88 unrelated production-tree changes into a security fix. The remaining `astro` advisory (GHSA-mpr7-6m5w-76rw) is `low`, below the gate's `moderate` threshold.
+- Keep the advisory full-tree audit green as well: `fast-uri` override `3.1.7` → `3.1.9` (3.1.7 sat *inside* its own vulnerable `3.0.0-3.1.8` range) and `brace-expansion` ^5.0.12.
 
 ### Fixed — Gateway Handshake/Auth (OpenClaw v2026.8.1 contract)
 - Device-proof signatures now use the **gateway-issued `connect.challenge` timestamp** as `signedAt` (falls back to local clock only for pre-challenge servers). Local-clock signatures fail on v2026.8.1+ gateways under clock skew (upstream #116679).
