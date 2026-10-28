@@ -1,5 +1,7 @@
 # OpenClaw features/changes relevant to clawsprawl (external Astro dashboard over Gateway WS/HTTP)
 
+> **Dated snapshot (2026-09-14).** Superseded by `v0.67.0`. Kept as provenance, not as current documentation.
+
 Research date: 2026-09-14. Local install: OpenClaw 2026.9.4 (docs package root: `/home/openclaw/.npm-global/lib/node_modules/openclaw/`, docs dir `docs/`, CHANGELOG at package root).
 Window covered: versions ~2026.7.x through 2026.9.4.
 

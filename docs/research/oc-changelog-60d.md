@@ -1,5 +1,7 @@
 # OpenClaw Changelog Research — 2026-07-15 → 2026-09-14 (last ~60 days)
 
+> **Dated snapshot (2026-09-14).** Superseded by `v0.67.0`. Kept as provenance, not as current documentation.
+
 **Prepared:** 2026-09-14 · **Local install:** OpenClaw 2026.9.4 (3a9d69d) — matches current release
 **Scope:** All releases published 2026-07-14 → 2026-09-14, plus the split `CHANGELOG/*.md` files on `main`.
 

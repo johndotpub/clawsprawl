@@ -1,5 +1,7 @@
 # ClawSprawl — OpenClaw Integration Health & Roadmap Analysis
 
+> **Dated snapshot (2026-09-14).** Findings reflect the commit and version cited below and are superseded by `v0.67.0`. Version, Node-floor, and open-PR figures here are historical. Kept as provenance, not as current documentation.
+
 **Analysis date:** 2026-09-14 (PDT)
 **Repository:** `~/null-arbitrage/clawsprawl` (read-only inspection; no modifications made)
 **Remote:** `git@github.com:johndotpub/clawsprawl.git` · public · Unlicense

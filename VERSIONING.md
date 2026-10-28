@@ -18,6 +18,10 @@ This repository is published with a clean-room baseline release:
 - `0.43.0`: protocol v4 upgrade, comprehensive event handling (31 event types), OpenTelemetry-focused observability, security hardening, and DRY/code-quality pass.
 - `0.44.0`: Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and OpenClaw v2026.6/7 protocol-robustness catch-up (agent-kind cap, configurable maxProtocol for v5, structured MISSING_SCOPE, v4 event buckets).
 
+> **Note:** `0.43.0` and `0.44.0` were written into this changelog and this list but were never tagged or released. `0.67.0` is the first tagged release since `0.42.69`.
+
+- `0.67.0`: first tagged release since `0.42.69`. Restores the production and full-tree dependency audit gates to zero, retires the nine-PR Dependabot backlog in one merge, ships the OpenClaw 2026.9 catch-up, and reconciles the version history above.
+
 ## Release Workflow
 
 1. Update docs and tests.
@@ -33,6 +37,19 @@ npm run test:e2e
 5. Commit with clear release-focused message.
 6. Tag: `git tag v<version>`.
 7. Publish: push to GitHub and use `publish-gpr.yml` workflow for `@johndotpub/clawsprawl` on GitHub Packages.
+
+## A Version Is A Tag, Not A Heading
+
+A version exists when it is **tagged and released**. A `## [x.y.z]` heading in `CHANGELOG.md` is an intention, not a release.
+
+This rule is written down because the two drifted here: `0.43.0` and `0.44.0` were given full CHANGELOG sections and baseline entries but were never tagged, while `0.42.76` was tagged and released but numbered *below* both — leaving the history wrong in both directions until `0.67.0` reconciled it.
+
+Consequences:
+
+- **Never write a `## [x.y.z]` heading for a version you are not shipping.** If work spans multiple merges, document it under the version it will ship in.
+- **If a version is abandoned before tagging, mark it.** Add `> **Not released.**` directly under its heading, or fold the notes into the version that actually shipped.
+- **`validate-tag-version.mjs` only checks tag ↔ `package.json`** at publish time. It cannot detect a CHANGELOG section for a version that never shipped. That check is human.
+- **Use the actual publish date**, not the date the CHANGELOG entry was written. They diverge whenever a release is blocked after its notes land.
 
 ## Post-Baseline Governance
 
