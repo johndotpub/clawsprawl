@@ -1,12 +1,17 @@
 import type {
-  ConnectParams,
-  EventFrame,
-  GatewayClientOptions,
-  GatewayFrame,
-  RequestFrame,
-  ResponseFrame,
-} from './types';
-import { createHash, createPrivateKey, createPublicKey, sign as ed25519Sign } from 'node:crypto';
+ ConnectParams,
+ EventFrame,
+ GatewayClientOptions,
+ GatewayFrame,
+ RequestFrame,
+ ResponseFrame,
+} from "./types";
+import {
+ createHash,
+ createPrivateKey,
+ createPublicKey,
+ sign as ed25519Sign,
+} from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // Request ID generation
@@ -16,8 +21,8 @@ let requestCounter = 0;
 
 /** Generate a unique request ID for native protocol frames. */
 function nextRequestId(): string {
-  requestCounter += 1;
-  return `cs-${Date.now()}-${requestCounter}`;
+ requestCounter += 1;
+ return `cs-${Date.now()}-${requestCounter}`;
 }
 
 /**
@@ -26,18 +31,23 @@ function nextRequestId(): string {
  * @returns void
  */
 export function resetRequestCounter(): void {
-  requestCounter = 0;
+ requestCounter = 0;
 }
 
-export function createRequestIdGenerator(): { next: () => string; reset: () => void } {
-  let counter = 0;
-  return {
-    next: () => {
-      counter += 1;
-      return `cs-${Date.now()}-${counter}`;
-    },
-    reset: () => { counter = 0; },
-  };
+export function createRequestIdGenerator(): {
+ next: () => string;
+ reset: () => void;
+} {
+ let counter = 0;
+ return {
+  next: () => {
+   counter += 1;
+   return `cs-${Date.now()}-${counter}`;
+  },
+  reset: () => {
+   counter = 0;
+  },
+ };
 }
 
 // ---------------------------------------------------------------------------
@@ -51,14 +61,18 @@ export function createRequestIdGenerator(): { next: () => string; reset: () => v
  * @param params - Optional payload to include in the request.
  * @returns The constructed {@link RequestFrame}.
  */
-export function buildRequest(method: string, params?: unknown, idGenerator?: { next: () => string }): RequestFrame {
-  const id = idGenerator ? idGenerator.next() : nextRequestId();
-  return {
-    type: 'req',
-    id,
-    method,
-    ...(params !== undefined ? { params } : {}),
-  };
+export function buildRequest(
+ method: string,
+ params?: unknown,
+ idGenerator?: { next: () => string },
+): RequestFrame {
+ const id = idGenerator ? idGenerator.next() : nextRequestId();
+ return {
+  type: "req",
+  id,
+  method,
+  ...(params !== undefined ? { params } : {}),
+ };
 }
 
 /**
@@ -87,6 +101,10 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  * Sending `_nonce` as a top-level property causes strict gateways to reject
  * the request with "unexpected property '_nonce'".
  *
+ * The gateway's `connect.challenge` payload is `{ nonce, ts }`. On
+ * v2026.8.1+ gateways the signature must use the gateway-issued `ts` as
+ * `signedAt`; pre-challenge servers omit it, so we fall back to the local clock.
+ *
  * @param options - Client options used to populate the connect parameters.
  * @returns The assembled {@link ConnectParams} for the handshake request.
  */
@@ -94,10 +112,12 @@ export const CLIENT_VERSION = __PACKAGE_VERSION__ as string;
  * Normalize device metadata for auth payload (lowercase + trim, matching gateway).
  */
 function normalizeDeviceMetadataForAuth(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  return trimmed.replace(/[A-Z]/g, (char) => String.fromCharCode(char.charCodeAt(0) + 32));
+ if (typeof value !== "string") return "";
+ const trimmed = value.trim();
+ if (!trimmed) return "";
+ return trimmed.replace(/[A-Z]/g, (char) =>
+  String.fromCharCode(char.charCodeAt(0) + 32),
+ );
 }
 
 /**
@@ -107,7 +127,9 @@ function normalizeDeviceMetadataForAuth(value: unknown): string {
  * In a Node SSR context this is 'server'; in a browser it reflects navigator.platform.
  */
 function resolveClientPlatform(): string {
-  return typeof navigator !== 'undefined' ? (navigator.platform ?? 'unknown') : 'server';
+ return typeof navigator !== "undefined"
+  ? (navigator.platform ?? "unknown")
+  : "server";
 }
 
 /**
@@ -118,13 +140,16 @@ function resolveClientPlatform(): string {
  * the keypair (CLAWSPRAWL_DEVICE_PUBLIC_KEY) instead of also computing the id.
  */
 function deriveDeviceId(publicKeyPem: string): string | undefined {
-  try {
-    const der = createPublicKey(Buffer.from(publicKeyPem, 'utf-8')).export({ type: 'spki', format: 'der' });
-    const raw = der.subarray(der.length - 32); // Ed25519 raw public key (last 32 bytes of SPKI DER)
-    return createHash('sha256').update(raw).digest('hex');
-  } catch {
-    return undefined;
-  }
+ try {
+  const der = createPublicKey(Buffer.from(publicKeyPem, "utf-8")).export({
+   type: "spki",
+   format: "der",
+  });
+  const raw = der.subarray(der.length - 32); // Ed25519 raw public key (last 32 bytes of SPKI DER)
+  return createHash("sha256").update(raw).digest("hex");
+ } catch {
+  return undefined;
+ }
 }
 
 /**
@@ -132,97 +157,128 @@ function deriveDeviceId(publicKeyPem: string): string | undefined {
  * The gateway reconstructs this exact string and verifies the signature against it.
  */
 function buildDeviceAuthPayloadV3(params: {
-  deviceId: string;
-  clientId: string;
-  clientMode: string;
-  role: string;
-  scopes: string[];
-  signedAtMs: number;
-  token: string;
-  nonce: string;
-  platform: string;
-  deviceFamily?: string;
+ deviceId: string;
+ clientId: string;
+ clientMode: string;
+ role: string;
+ scopes: string[];
+ signedAtMs: number;
+ token: string;
+ nonce: string;
+ platform: string;
+ deviceFamily?: string;
 }): string {
-  const scopes = params.scopes.join(',');
-  const token = params.token ?? '';
-  const platform = normalizeDeviceMetadataForAuth(params.platform);
-  const deviceFamily = normalizeDeviceMetadataForAuth(params.deviceFamily);
-  return [
-    'v3',
-    params.deviceId,
-    params.clientId,
-    params.clientMode,
-    params.role,
-    scopes,
-    String(params.signedAtMs),
-    token,
-    params.nonce,
-    platform,
-    deviceFamily,
-  ].join('|');
+ const scopes = params.scopes.join(",");
+ const token = params.token ?? "";
+ const platform = normalizeDeviceMetadataForAuth(params.platform);
+ const deviceFamily = normalizeDeviceMetadataForAuth(params.deviceFamily);
+ return [
+  "v3",
+  params.deviceId,
+  params.clientId,
+  params.clientMode,
+  params.role,
+  scopes,
+  String(params.signedAtMs),
+  token,
+  params.nonce,
+  platform,
+  deviceFamily,
+ ].join("|");
 }
 
 /**
  * Sign the connect challenge with an Ed25519 private key using the v3 payload format.
  * Returns a base64url-encoded signature, or undefined if signing fails.
  */
-function signChallenge(options: GatewayClientOptions, nonce: string, privateKeyPem: string, deviceId: string): { signature: string; signedAt: number } | undefined {
-  try {
-    const signedAt = Date.now();
-    const payload = buildDeviceAuthPayloadV3({
-      deviceId,
-      clientId: options.clientId ?? 'gateway-client',
-      clientMode: options.clientMode ?? 'ui',
-      role: options.role ?? 'operator',
-      scopes: options.scopes ?? ['operator.read'],
-      signedAtMs: signedAt,
-      token: options.token ?? '',
-      nonce,
-      platform: resolveClientPlatform(),
-    });
-    const key = createPrivateKey(Buffer.from(privateKeyPem, 'utf-8'));
-    const signature = ed25519Sign(undefined, Buffer.from(payload, 'utf-8'), key);
-    return { signature: signature.toString('base64url'), signedAt };
-  } catch {
-    return undefined;
-  }
+function signChallenge(
+ options: GatewayClientOptions,
+ nonce: string,
+ privateKeyPem: string,
+ deviceId: string,
+ challengeTs?: number,
+): { signature: string; signedAt: number } | undefined {
+ try {
+  const signedAt = challengeTs ?? Date.now();
+  const payload = buildDeviceAuthPayloadV3({
+   deviceId,
+   clientId: options.clientId ?? "gateway-client",
+   clientMode: options.clientMode ?? "ui",
+   role: options.role ?? "operator",
+   scopes: options.scopes ?? ["operator.read"],
+   signedAtMs: signedAt,
+   token: options.token ?? "",
+   nonce,
+   platform: resolveClientPlatform(),
+  });
+  const key = createPrivateKey(Buffer.from(privateKeyPem, "utf-8"));
+  const signature = ed25519Sign(undefined, Buffer.from(payload, "utf-8"), key);
+  return { signature: signature.toString("base64url"), signedAt };
+ } catch {
+  return undefined;
+ }
 }
 
-export function buildConnectParams(options: GatewayClientOptions, challengeNonce?: string): ConnectParams {
-  // device.id is derived from the public key (sha256 of the raw Ed25519 key) when
-  // not supplied explicitly — matching the OpenClaw gateway's device-identity check.
-  const deviceId = options.deviceId ?? (options.devicePublicKey ? deriveDeviceId(options.devicePublicKey) : undefined);
-  const signed = (challengeNonce && deviceId && options.devicePrivateKey)
-    ? signChallenge(options, challengeNonce, options.devicePrivateKey, deviceId)
-    : undefined;
-  return {
-    minProtocol: MIN_PROTOCOL_VERSION,
-    maxProtocol: options.maxProtocol ?? PROTOCOL_VERSION,
-    client: {
-      id: options.clientId ?? 'gateway-client',
-      version: options.clientVersion ?? CLIENT_VERSION,
-      platform: resolveClientPlatform(),
-      mode: options.clientMode ?? 'ui',
-      ...(options.clientDisplayName ? { displayName: options.clientDisplayName } : {}),
-    },
-    ...(options.token ? {
+export function buildConnectParams(
+ options: GatewayClientOptions,
+ challengeNonce?: string,
+ challengeTs?: number,
+): ConnectParams {
+ // device.id is derived from the public key (sha256 of the raw Ed25519 key) when
+ // not supplied explicitly — matching the OpenClaw gateway's device-identity check.
+ const deviceId =
+  options.deviceId ??
+  (options.devicePublicKey
+   ? deriveDeviceId(options.devicePublicKey)
+   : undefined);
+ const signed =
+  challengeNonce && deviceId && options.devicePrivateKey
+   ? signChallenge(
+      options,
+      challengeNonce,
+      options.devicePrivateKey,
+      deviceId,
+      challengeTs,
+     )
+   : undefined;
+ return {
+  minProtocol: MIN_PROTOCOL_VERSION,
+  maxProtocol: options.maxProtocol ?? PROTOCOL_VERSION,
+  client: {
+   id: options.clientId ?? "gateway-client",
+   version: options.clientVersion ?? CLIENT_VERSION,
+   platform: resolveClientPlatform(),
+   mode: options.clientMode ?? "ui",
+   ...(options.clientDisplayName
+    ? { displayName: options.clientDisplayName }
+    : {}),
+  },
+  ...(options.token
+   ? {
       auth: {
-        token: options.token,
-        ...(options.deviceToken ? { deviceToken: options.deviceToken } : {}),
+       token: options.token,
+       ...(options.deviceToken ? { deviceToken: options.deviceToken } : {}),
       },
-    } : options.deviceToken ? { auth: { deviceToken: options.deviceToken } } : {}),
-    role: options.role ?? 'operator',
-    scopes: options.scopes ?? ['operator.read'],
-    ...(options.caps?.length ? { caps: options.caps } : {}),
-    ...(deviceId ? {
+     }
+   : options.deviceToken
+     ? { auth: { deviceToken: options.deviceToken } }
+     : {}),
+  role: options.role ?? "operator",
+  scopes: options.scopes ?? ["operator.read"],
+  ...(options.caps?.length ? { caps: options.caps } : {}),
+  ...(deviceId
+   ? {
       device: {
-        id: deviceId,
-        publicKey: options.devicePublicKey ?? '',
-        ...(challengeNonce ? { nonce: challengeNonce } : {}),
-        ...(signed ? { signature: signed.signature, signedAt: signed.signedAt } : {}),
+       id: deviceId,
+       publicKey: options.devicePublicKey ?? "",
+       ...(challengeNonce ? { nonce: challengeNonce } : {}),
+       ...(signed
+        ? { signature: signed.signature, signedAt: signed.signedAt }
+        : {}),
       },
-    } : {}),
-  };
+     }
+   : {}),
+ };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,27 +297,29 @@ export function buildConnectParams(options: GatewayClientOptions, challengeNonce
  * @returns The parsed {@link GatewayFrame}, or `null` if parsing or validation fails.
  */
 export function parseMessage(input: string): GatewayFrame | null {
-  try {
-    const parsed = JSON.parse(input);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return null;
-    }
-    if (parsed.type === 'res') {
-      if (typeof parsed.id !== 'string' || typeof parsed.ok !== 'boolean') return null;
-      return parsed as ResponseFrame;
-    }
-    if (parsed.type === 'req') {
-      if (typeof parsed.id !== 'string' || typeof parsed.method !== 'string') return null;
-      return parsed as RequestFrame;
-    }
-    if (parsed.type === 'event') {
-      if (typeof parsed.event !== 'string') return null;
-      return parsed as EventFrame;
-    }
-    return null;
-  } catch {
-    return null;
+ try {
+  const parsed = JSON.parse(input);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+   return null;
   }
+  if (parsed.type === "res") {
+   if (typeof parsed.id !== "string" || typeof parsed.ok !== "boolean")
+    return null;
+   return parsed as ResponseFrame;
+  }
+  if (parsed.type === "req") {
+   if (typeof parsed.id !== "string" || typeof parsed.method !== "string")
+    return null;
+   return parsed as RequestFrame;
+  }
+  if (parsed.type === "event") {
+   if (typeof parsed.event !== "string") return null;
+   return parsed as EventFrame;
+  }
+  return null;
+ } catch {
+  return null;
+ }
 }
 
 /**
@@ -271,8 +329,8 @@ export function parseMessage(input: string): GatewayFrame | null {
  * @returns `true` if `value` is a {@link ResponseFrame}.
  */
 export function isResponseFrame(value: unknown): value is ResponseFrame {
-  if (typeof value !== 'object' || value === null) return false;
-  return (value as Record<string, unknown>).type === 'res';
+ if (typeof value !== "object" || value === null) return false;
+ return (value as Record<string, unknown>).type === "res";
 }
 
 /**
@@ -282,8 +340,8 @@ export function isResponseFrame(value: unknown): value is ResponseFrame {
  * @returns `true` if `value` is an {@link EventFrame}.
  */
 export function isEventFrame(value: unknown): value is EventFrame {
-  if (typeof value !== 'object' || value === null) return false;
-  return (value as Record<string, unknown>).type === 'event';
+ if (typeof value !== "object" || value === null) return false;
+ return (value as Record<string, unknown>).type === "event";
 }
 
 /**
@@ -293,8 +351,8 @@ export function isEventFrame(value: unknown): value is EventFrame {
  * @returns `true` if `value` is a {@link RequestFrame}.
  */
 export function isRequestFrame(value: unknown): value is RequestFrame {
-  if (typeof value !== 'object' || value === null) return false;
-  return (value as Record<string, unknown>).type === 'req';
+ if (typeof value !== "object" || value === null) return false;
+ return (value as Record<string, unknown>).type === "req";
 }
 
 /**
@@ -304,9 +362,18 @@ export function isRequestFrame(value: unknown): value is RequestFrame {
  * @param frame - The gateway frame to inspect.
  * @returns `true` if `frame` is a `connect.challenge` event.
  */
-export function isConnectChallenge(frame: GatewayFrame): frame is EventFrame & { payload: { nonce: string; ts: number } } {
-  if (frame.type !== 'event' || (frame as EventFrame).event !== 'connect.challenge') return false;
-  const payload = (frame as EventFrame).payload;
-  return typeof payload === 'object' && payload !== null
-    && typeof (payload as Record<string, unknown>).nonce === 'string';
+export function isConnectChallenge(
+ frame: GatewayFrame,
+): frame is EventFrame & { payload: { nonce: string; ts: number } } {
+ if (
+  frame.type !== "event" ||
+  (frame as EventFrame).event !== "connect.challenge"
+ )
+  return false;
+ const payload = (frame as EventFrame).payload;
+ return (
+  typeof payload === "object" &&
+  payload !== null &&
+  typeof (payload as Record<string, unknown>).nonce === "string"
+ );
 }

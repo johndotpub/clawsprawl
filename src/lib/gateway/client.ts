@@ -6,8 +6,8 @@ import {
   isEventFrame,
   isResponseFrame,
   parseMessage,
-} from './protocol';
-import { canTransitionConnectionState } from './state-machine';
+} from "./protocol";
+import { canTransitionConnectionState } from "./state-machine";
 import type {
   ConnectionState,
   EventFrame,
@@ -15,7 +15,7 @@ import type {
   HelloOk,
   ResponseFrame,
   Snapshot,
-} from './types';
+} from "./types";
 
 /**
  * Verify the gateway challenge nonce and enforce loopback-only operation.
@@ -36,21 +36,28 @@ import type {
  * @param gatewayUrl - The gateway URL to check for loopback trust.
  * @returns `true` if the gateway URL is loopback; throws on non-loopback without device identity.
  */
-export function verifyGatewayNonce(_nonce: string, gatewayUrl?: string): boolean {
+export function verifyGatewayNonce(
+  _nonce: string,
+  gatewayUrl?: string,
+): boolean {
   if (!gatewayUrl) return true;
   try {
     const parsed = new URL(gatewayUrl);
-    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1';
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    const isLoopback =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "::1";
     if (!isLoopback) {
       throw new Error(
         `Non-loopback gateway URL (${host}) requires device identity + nonce signing. ` +
-        'clawsprawl currently supports loopback-only operation. ' +
-        'See docs/architecture-overview.md and roadmap for remote gateway support.',
+          "clawsprawl currently supports loopback-only operation. " +
+          "See docs/architecture-overview.md and roadmap for remote gateway support.",
       );
     }
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Non-loopback')) throw err;
+    if (err instanceof Error && err.message.includes("Non-loopback")) throw err;
     // Malformed URL — let the WebSocket connect fail naturally
   }
   return true;
@@ -58,6 +65,46 @@ export function verifyGatewayNonce(_nonce: string, gatewayUrl?: string): boolean
 
 /** Callback invoked whenever the connection state changes. */
 type StateListener = (state: ConnectionState) => void;
+
+/**
+ * Build a pre-handshake failure error the reconnect path can act on.
+ *
+ * Gateway upgrade failures (HTTP 5xx, connection refused) are transient, so
+ * they carry `retryable: true` + `code: 'GATEWAY_UNAVAILABLE'` — mirroring the
+ * retryable/retryAfterMs metadata surfaced on failed RPC responses.
+ */
+function gatewayUnavailableError(
+  message: string,
+  retryAfterMs?: number,
+): Error & { retryable: true; code: string; retryAfterMs?: number } {
+  const err = new Error(message) as Error & {
+    retryable: true;
+    code: string;
+    retryAfterMs?: number;
+  };
+  err.retryable = true;
+  err.code = "GATEWAY_UNAVAILABLE";
+  if (typeof retryAfterMs === "number") err.retryAfterMs = retryAfterMs;
+  return err;
+}
+
+/**
+ * Is a pre-handshake socket `error` cause plausibly transient (worth retrying)?
+ * Node surfaces `ECONNREFUSED`/`ETIMEDOUT` etc. on the error object; browsers do not.
+ */
+function isRetryableSocketError(cause: unknown): boolean {
+  const code =
+    cause && typeof cause === "object"
+      ? (cause as { code?: unknown }).code
+      : undefined;
+  return (
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "ETIMEDOUT" ||
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN"
+  );
+}
 
 /** Callback invoked for each gateway event frame received. */
 type GatewayEventListener = (event: EventFrame) => void;
@@ -85,12 +132,19 @@ interface PendingRequest {
  */
 export class GatewayClient {
   private readonly options: Required<
-    Pick<GatewayClientOptions, 'reconnect' | 'minReconnectDelayMs' | 'maxReconnectDelayMs' | 'connectTimeoutMs' | 'rpcTimeoutMs'>
+    Pick<
+      GatewayClientOptions,
+      | "reconnect"
+      | "minReconnectDelayMs"
+      | "maxReconnectDelayMs"
+      | "connectTimeoutMs"
+      | "rpcTimeoutMs"
+    >
   > &
     GatewayClientOptions;
 
   private socket: WebSocket | null = null;
-  private state: ConnectionState = 'idle';
+  private state: ConnectionState = "idle";
   private reconnectEnabled = false;
   private reconnectDelayMs: number;
   private reconnectAttempts = 0;
@@ -109,7 +163,17 @@ export class GatewayClient {
   private _helloOk: HelloOk | null = null;
 
   /** Gateway-advertised policy limits (from hello-ok). */
-  private _policy: { tickIntervalMs: number; maxPayload: number; maxBufferedBytes: number } | null = null;
+  private _policy: {
+    tickIntervalMs: number;
+    maxPayload: number;
+    maxBufferedBytes: number;
+  } | null = null;
+
+  /** Count of non-string (compressed/binary) WebSocket frames ignored this session. */
+  private _nonStringFrameCount = 0;
+
+  /** Guards the one-time non-string frame warning so it logs once per client. */
+  private nonStringFrameWarned = false;
 
   constructor(options: GatewayClientOptions) {
     this.options = {
@@ -147,8 +211,21 @@ export class GatewayClient {
   }
 
   /** Gateway-advertised policy limits (tickIntervalMs, maxPayload, maxBufferedBytes). */
-  get policy(): { tickIntervalMs: number; maxPayload: number; maxBufferedBytes: number } | null {
+  get policy(): {
+    tickIntervalMs: number;
+    maxPayload: number;
+    maxBufferedBytes: number;
+  } | null {
     return this._policy;
+  }
+
+  /**
+   * Number of non-string WebSocket frames ignored (compressed or binary).
+   * A non-zero value means the gateway negotiated a compression extension we
+   * cannot decode; frames are dropped rather than parsed as text.
+   */
+  get nonStringFrameCount(): number {
+    return this._nonStringFrameCount;
   }
 
   // --- Connection lifecycle ---
@@ -163,13 +240,17 @@ export class GatewayClient {
   async connect(): Promise<HelloOk> {
     if (this.connectInFlight) return this.connectInFlight;
 
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING)
+    ) {
       if (this._helloOk) {
         return this._helloOk;
       }
     }
 
-    this.setState(this.state === 'idle' ? 'connecting' : 'reconnecting');
+    this.setState(this.state === "idle" ? "connecting" : "reconnecting");
 
     this.connectInFlight = this.openSocketWithFallback();
     try {
@@ -183,7 +264,10 @@ export class GatewayClient {
     try {
       return await this.openSocket(this.activeConnectUrl);
     } catch (err) {
-      if (!this.options.fallbackUrl || this.activeConnectUrl === this.options.fallbackUrl) {
+      if (
+        !this.options.fallbackUrl ||
+        this.activeConnectUrl === this.options.fallbackUrl
+      ) {
         throw err;
       }
       this.activeConnectUrl = this.options.fallbackUrl;
@@ -199,7 +283,7 @@ export class GatewayClient {
   disconnect(): void {
     this.reconnectEnabled = false;
     this._helloOk = null;
-    this.clearPending(new Error('Disconnected'));
+    this.clearPending(new Error("Disconnected"));
     this.clearPrimaryRetry();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -213,7 +297,7 @@ export class GatewayClient {
       this.socket.close();
       this.socket = null;
     }
-    this.setState('disconnected');
+    this.setState("disconnected");
   }
 
   // --- Subscriptions ---
@@ -254,9 +338,12 @@ export class GatewayClient {
    * @param params - Optional key-value parameters for the request.
    * @returns A promise that resolves with the response payload typed as `TResult`.
    */
-  async call<TResult = unknown>(method: string, params?: Record<string, unknown>): Promise<TResult> {
+  async call<TResult = unknown>(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<TResult> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error('Socket is not connected');
+      throw new Error("Socket is not connected");
     }
 
     const request = buildRequest(method, params, this.requestIdGenerator);
@@ -268,7 +355,11 @@ export class GatewayClient {
         reject(new Error(`RPC timeout: ${method}`));
       }, this.options.rpcTimeoutMs);
 
-      const entry: PendingRequest = { resolve: resolve as (value: unknown) => void, reject, timeout };
+      const entry: PendingRequest = {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+        timeout,
+      };
       this.pending.set(request.id, entry);
 
       try {
@@ -276,7 +367,9 @@ export class GatewayClient {
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(request.id);
-        entry.reject(err instanceof Error ? err : new Error('ws.send() failed'));
+        entry.reject(
+          err instanceof Error ? err : new Error("ws.send() failed"),
+        );
       }
     });
   }
@@ -288,9 +381,17 @@ export class GatewayClient {
     if (this.options.origin) {
       wsOptions.headers = { Origin: this.options.origin };
     }
-    const ws = Object.keys(wsOptions).length > 0
-      ? new WebSocket(targetUrl, wsOptions as unknown as ConstructorParameters<typeof WebSocket>[1])
-      : new WebSocket(targetUrl);
+    let ws: WebSocket;
+    if (Object.keys(wsOptions).length > 0) {
+      // SAFETY: Node's undici WebSocket accepts an options object (headers/dispatcher)
+      // as its second argument, but the DOM lib types that slot as protocols only.
+      const socketOptions = wsOptions as unknown as ConstructorParameters<
+        typeof WebSocket
+      >[1];
+      ws = new WebSocket(targetUrl, socketOptions);
+    } else {
+      ws = new WebSocket(targetUrl);
+    }
     this.socket = ws;
 
     return new Promise<HelloOk>((resolve, reject) => {
@@ -299,18 +400,57 @@ export class GatewayClient {
       const timeout = setTimeout(() => {
         if (!handshakeComplete) {
           ws.close();
-          reject(new Error('Connection timed out'));
+          reject(new Error("Connection timed out"));
         }
       }, this.options.connectTimeoutMs);
 
+      // The `ws` package (Node) emits 'unexpected-response' with the HTTP
+      // response when the upgrade fails (e.g. 503 Service Unavailable). The
+      // standard WebSocket API has no equivalent, so fall back to onerror below.
+      // SAFETY: Node's `ws` package exposes EventEmitter `.on()`; the DOM
+      // WebSocket type does not, so probe for it at runtime.
+      const emitter = ws as unknown as {
+        on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      };
+      if (typeof emitter.on === "function") {
+        emitter.on("unexpected-response", (...args: unknown[]) => {
+          if (handshakeComplete) return;
+          const res = args[1] as
+            | { statusCode?: number; statusMessage?: string }
+            | undefined;
+          const status = res?.statusCode ?? 0;
+          clearTimeout(timeout);
+          // 5xx upgrade failures are transient (gateway starting/restarting).
+          // Other statuses are auth/misconfig failures — keep them non-retryable
+          // and report the generic socket error (as the absent-listener path did).
+          if (status >= 500) {
+            reject(
+              gatewayUnavailableError(
+                `Gateway unavailable during handshake (HTTP ${status}${res?.statusMessage ? ` ${res.statusMessage}` : ""})`,
+              ),
+            );
+          } else {
+            reject(new Error("Socket error"));
+          }
+        });
+      }
+
       ws.onopen = () => {
-        this.setState('handshaking');
+        this.setState("handshaking");
       };
 
-      ws.onerror = () => {
+      ws.onerror = (event?: unknown) => {
         if (!handshakeComplete) {
           clearTimeout(timeout);
-          reject(new Error('Socket error'));
+          const cause = (event as { error?: unknown })?.error ?? event;
+          // Without an HTTP response (runtimes with no 'unexpected-response'
+          // support) a pre-handshake error is treated as potentially transient:
+          // connection-refused and DNS failures are indistinguishable here.
+          reject(
+            isRetryableSocketError(cause) || typeof emitter.on !== "function"
+              ? gatewayUnavailableError("Socket error")
+              : new Error("Socket error"),
+          );
         }
       };
 
@@ -318,10 +458,15 @@ export class GatewayClient {
         this.socket = null;
         if (!handshakeComplete) {
           clearTimeout(timeout);
-          reject(new Error('Socket closed during handshake'));
+          // A dropped upgrade is retryable when the caller opted into reconnect.
+          reject(
+            this.options.reconnect
+              ? gatewayUnavailableError("Socket closed during handshake")
+              : new Error("Socket closed during handshake"),
+          );
         } else {
-          this.setState('disconnected');
-          this.clearPending(new Error('Socket closed'));
+          this.setState("disconnected");
+          this.clearPending(new Error("Socket closed"));
           if (this.reconnectEnabled) {
             this.scheduleReconnect();
           }
@@ -329,35 +474,50 @@ export class GatewayClient {
       };
 
       ws.onmessage = (message) => {
-        const text = typeof message.data === 'string' ? message.data : '';
-        const frame = parseMessage(text);
+        if (typeof message.data !== "string") {
+          this._nonStringFrameCount += 1;
+          if (!this.nonStringFrameWarned) {
+            this.nonStringFrameWarned = true;
+            console.warn(
+              "[clawsprawl:client] received non-string WebSocket frame (compressed or binary); frame ignored",
+            );
+          }
+          return;
+        }
+        const frame = parseMessage(message.data);
         if (!frame) return;
 
         if (!handshakeComplete) {
           // During handshake, handle challenge + hello-ok
-          this.handleHandshakeMessage(frame, ws, (helloOk) => {
-            handshakeComplete = true;
-            clearTimeout(timeout);
-            this._helloOk = helloOk;
-            if (helloOk.policy) {
-              this._policy = {
-                tickIntervalMs: helloOk.policy.tickIntervalMs ?? 15_000,
-                maxPayload: helloOk.policy.maxPayload ?? 26_214_400,
-                maxBufferedBytes: helloOk.policy.maxBufferedBytes ?? 52_428_800,
-              };
-            }
-            this.setState('connected');
-    this.reconnectEnabled = this.options.reconnect;
-    this.reconnectAttempts = 0;
-    this.reconnectDelayMs = this.options.minReconnectDelayMs;
-    this.schedulePrimaryRetry();
-            resolve(helloOk);
-          }, (err) => {
-            handshakeComplete = true;
-            clearTimeout(timeout);
-            ws.close();
-            reject(err);
-          });
+          this.handleHandshakeMessage(
+            frame,
+            ws,
+            (helloOk) => {
+              handshakeComplete = true;
+              clearTimeout(timeout);
+              this._helloOk = helloOk;
+              if (helloOk.policy) {
+                this._policy = {
+                  tickIntervalMs: helloOk.policy.tickIntervalMs ?? 15_000,
+                  maxPayload: helloOk.policy.maxPayload ?? 26_214_400,
+                  maxBufferedBytes:
+                    helloOk.policy.maxBufferedBytes ?? 52_428_800,
+                };
+              }
+              this.setState("connected");
+              this.reconnectEnabled = this.options.reconnect;
+              this.reconnectAttempts = 0;
+              this.reconnectDelayMs = this.options.minReconnectDelayMs;
+              this.schedulePrimaryRetry();
+              resolve(helloOk);
+            },
+            (err) => {
+              handshakeComplete = true;
+              clearTimeout(timeout);
+              ws.close();
+              reject(err);
+            },
+          );
         } else {
           // Steady state
           this.handleMessage(frame);
@@ -376,19 +536,35 @@ export class GatewayClient {
 
     // Step 1: Gateway sends connect.challenge
     if (isConnectChallenge(frame)) {
-      const nonce = frame.payload?.nonce ?? '';
+      const nonce = frame.payload?.nonce ?? "";
+      // v2026.8.1+ gateways issue `{ nonce, ts }` and require the signature to
+      // use `ts` as signedAt; older servers omit it (fall back to the local clock).
+      const challengeTs =
+        typeof frame.payload?.ts === "number" ? frame.payload.ts : undefined;
       if (!verifyGatewayNonce(nonce, this.options.url)) {
-        onError(new Error('Gateway nonce verification failed'));
+        onError(new Error("Gateway nonce verification failed"));
         return;
       }
-      const connectParams = buildConnectParams(this.options, nonce);
-      const connectReq = buildRequest('connect', connectParams, this.requestIdGenerator);
+      const connectParams = buildConnectParams(
+        this.options,
+        nonce,
+        challengeTs,
+      );
+      const connectReq = buildRequest(
+        "connect",
+        connectParams,
+        this.requestIdGenerator,
+      );
 
       // Store pending so we can match the response
       this.pending.set(connectReq.id, {
         resolve: (payload) => {
-          if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).type !== 'hello-ok') {
-            onError(new Error('Invalid HelloOk response from gateway'));
+          if (
+            typeof payload !== "object" ||
+            payload === null ||
+            (payload as Record<string, unknown>).type !== "hello-ok"
+          ) {
+            onError(new Error("Invalid HelloOk response from gateway"));
             return;
           }
           const helloOk = payload as HelloOk;
@@ -397,7 +573,7 @@ export class GatewayClient {
         reject: onError,
         timeout: setTimeout(() => {
           this.pending.delete(connectReq.id);
-          onError(new Error('Handshake timed out waiting for hello-ok'));
+          onError(new Error("Handshake timed out waiting for hello-ok"));
         }, this.options.connectTimeoutMs),
       });
 
@@ -423,8 +599,17 @@ export class GatewayClient {
     }
 
     if (isEventFrame(frame)) {
+      // BC-1 (gateway v2026.8.1, #116043): event-sequence baselines reset per
+      // replacement WebSocket, so a new socket restarts `seq` at 1. This client
+      // forwards every event straight to listeners and implements no seq-gap
+      // recovery — therefore no baseline reset is needed here. Do not add gap
+      // recovery without accounting for the per-socket baseline reset.
       for (const listener of this.eventListeners) {
-        try { listener(frame); } catch { /* swallow listener errors */ }
+        try {
+          listener(frame);
+        } catch {
+          /* swallow listener errors */
+        }
       }
     }
   }
@@ -437,8 +622,8 @@ export class GatewayClient {
     this.pending.delete(response.id);
 
     if (!response.ok || response.error) {
-      const errMsg = response.error?.message ?? 'Unknown error';
-      const errCode = response.error?.code ?? 'UNKNOWN';
+      const errMsg = response.error?.message ?? "Unknown error";
+      const errCode = response.error?.code ?? "UNKNOWN";
       const retryable = response.error?.retryable === true;
       const retryAfterMs = response.error?.retryAfterMs;
       const errDetails = response.error?.details;
@@ -447,11 +632,28 @@ export class GatewayClient {
         retryAfterMs?: number;
         code?: string;
         details?: unknown;
+        missingScopes?: string[];
       };
       if (retryable) err.retryable = true;
-      if (typeof retryAfterMs === 'number') err.retryAfterMs = retryAfterMs;
+      if (typeof retryAfterMs === "number") err.retryAfterMs = retryAfterMs;
       err.code = errCode;
       if (errDetails !== undefined) err.details = errDetails;
+      // BC-10: FORBIDDEN/MISSING_SCOPE carries the scopes the caller needs, so
+      // the dashboard layer can render actionable "requires scope X" hints.
+      if (
+        errCode === "FORBIDDEN" &&
+        typeof errDetails === "object" &&
+        errDetails !== null &&
+        (errDetails as Record<string, unknown>).code === "MISSING_SCOPE"
+      ) {
+        const requiredScopes = (errDetails as Record<string, unknown>)
+          .requiredScopes;
+        if (Array.isArray(requiredScopes)) {
+          err.missingScopes = requiredScopes.filter(
+            (scope): scope is string => typeof scope === "string",
+          );
+        }
+      }
       pending.reject(err);
       return;
     }
@@ -469,19 +671,25 @@ export class GatewayClient {
 
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setState('error');
-      console.warn('[clawsprawl:client] max reconnect attempts reached');
+      this.setState("error");
+      console.warn("[clawsprawl:client] max reconnect attempts reached");
       return;
     }
-    this.setState('reconnecting');
+    this.setState("reconnecting");
     this.reconnectAttempts++;
     const jitter = Math.floor(Math.random() * 150);
-    const delay = Math.min(this.reconnectDelayMs + jitter, this.options.maxReconnectDelayMs);
+    const delay = Math.min(
+      this.reconnectDelayMs + jitter,
+      this.options.maxReconnectDelayMs,
+    );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect().catch((err) => {
-        console.warn('[clawsprawl:client] reconnect failed:', err);
-        this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.options.maxReconnectDelayMs);
+        console.warn("[clawsprawl:client] reconnect failed:", err);
+        this.reconnectDelayMs = Math.min(
+          this.reconnectDelayMs * 2,
+          this.options.maxReconnectDelayMs,
+        );
       });
     }, delay);
   }
@@ -493,22 +701,35 @@ export class GatewayClient {
 
     this.state = nextState;
     for (const listener of this.stateListeners) {
-      try { listener(nextState); } catch { /* swallow listener errors */ }
+      try {
+        listener(nextState);
+      } catch {
+        /* swallow listener errors */
+      }
     }
   }
 
   private schedulePrimaryRetry(): void {
     this.clearPrimaryRetry();
-    if (!this.options.fallbackUrl || this.activeConnectUrl !== this.options.fallbackUrl) return;
+    if (
+      !this.options.fallbackUrl ||
+      this.activeConnectUrl !== this.options.fallbackUrl
+    )
+      return;
 
     this.primaryRetryTimer = setInterval(() => {
-      if (this.options.url && this.activeConnectUrl === this.options.fallbackUrl) {
+      if (
+        this.options.url &&
+        this.activeConnectUrl === this.options.fallbackUrl
+      ) {
         const primaryUrl = this.options.url;
-        this.openSocket(primaryUrl).then(() => {
-          this.activeConnectUrl = primaryUrl;
-        }).catch(() => {
-          // Primary still unreachable — stay on fallback
-        });
+        this.openSocket(primaryUrl)
+          .then(() => {
+            this.activeConnectUrl = primaryUrl;
+          })
+          .catch(() => {
+            // Primary still unreachable — stay on fallback
+          });
       }
     }, GatewayClient.PRIMARY_RETRY_INTERVAL_MS);
   }

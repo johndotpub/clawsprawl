@@ -16,25 +16,69 @@
  * @module server-service
  */
 
-import { GatewayClient } from './client';
+import { GatewayClient } from "./client";
 import {
-  normalizeAgents, normalizeChannelsStatus, normalizeConfigData, normalizeCronJobs,
-  normalizeCronRuns, normalizeCronScheduler, normalizeFileStatus,
-  normalizeHealth, normalizeMemoryStatus,
-  normalizeModels, normalizePresence, normalizeSessionDetails, normalizeSessions,
-  normalizeSkillsStatus, normalizeStatus, normalizeToolsCatalog, normalizeUsageCost,
+  normalizeAgents,
+  normalizeAuditTimeline,
+  normalizeChannelsStatus,
+  normalizeConfigData,
+  normalizeConfigSchema,
+  normalizeCronJobs,
+  normalizeCronRuns,
+  normalizeCronScheduler,
+  normalizeFileStatus,
+  normalizeHealth,
+  normalizeMemoryStatus,
+  normalizeModels,
+  normalizeNodeFleet,
+  normalizePresence,
+  normalizeProgressCard,
+  normalizeSessionDetails,
+  normalizeSessions,
+  normalizeSkillProposals,
+  normalizeSkillsStatus,
+  normalizeStability,
+  normalizeStatus,
+  normalizeTaskLedger,
+  normalizeToolsCatalog,
+  normalizeUsageCost,
   normalizeUsageStatus,
+  normalizeUsageTimeseries,
   countSessionsByAgent,
-} from '../dashboard/adapters';
-import type { EventFrame, ConnectionState } from './types';
-import type { FileStatusEntry, ConfigResponse, SessionDetailEntry } from './types';
-import { CLIENT_VERSION } from './protocol';
+} from "../dashboard/adapters";
+import type { EventFrame, ConnectionState } from "./types";
+import type {
+  AuditTimelineEntry,
+  ConfigSchemaEntry,
+  FileStatusEntry,
+  ConfigResponse,
+  NodeFleetEntry,
+  ProgressCard,
+  SessionDetailEntry,
+  SkillProposalEntry,
+  StabilityEntry,
+  TaskLedgerEntry,
+  UsageTimeseriesEntry,
+} from "./types";
+import { CLIENT_VERSION } from "./protocol";
+import {
+  DASHBOARD_CAPABILITIES,
+  hasCapability,
+  hasMethod,
+} from "./capabilities";
+
+/** Gateway capability that gates agent-scoped progress cards (OpenClaw 2026.9). */
+const PROGRESS_CARD_CAPABILITY = "progress-card-agent-scope-v1";
+/** RPC method that publishes per-session progress cards. */
+const PROGRESS_CARD_METHOD = "progressCard.get";
+/** Maximum session keys fetched per progress-card refresh cycle. */
+const PROGRESS_CARD_FETCH_LIMIT = 20;
 
 /** Parse comma-separated gateway scopes from env into a trimmed array. */
 function parseGatewayScopes(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   const scopes = value
-    .split(',')
+    .split(",")
     .map((scope) => scope.trim())
     .filter((scope) => scope.length > 0);
   return scopes.length > 0 ? scopes : undefined;
@@ -50,7 +94,9 @@ function parseGatewayScopes(value: string | undefined): string[] | undefined {
  * range input, in which case the caller falls back to the compiled
  * `PROTOCOL_VERSION` via `options.maxProtocol ?? PROTOCOL_VERSION`.
  */
-export function parseMaxProtocol(value: string | undefined): number | undefined {
+export function parseMaxProtocol(
+  value: string | undefined,
+): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 3) return undefined;
@@ -70,11 +116,11 @@ export const SERVICE_CONFIG = {
   /** Maximum events retained in the server-side ring buffer. */
   MAX_EVENTS: 500,
   /** Default gateway WebSocket URL. */
-  DEFAULT_GATEWAY_URL: 'ws://localhost:18789/ws',
+  DEFAULT_GATEWAY_URL: "ws://localhost:18789/ws",
   /** Fallback gateway WebSocket URL. */
-  FALLBACK_GATEWAY_URL: 'ws://127.0.0.1:18789/ws',
+  FALLBACK_GATEWAY_URL: "ws://127.0.0.1:18789/ws",
   /** Default gateway HTTP base URL (used for SSE and REST endpoints). */
-  DEFAULT_GATEWAY_HTTP_URL: 'http://127.0.0.1:18789',
+  DEFAULT_GATEWAY_HTTP_URL: "http://127.0.0.1:18789",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -111,8 +157,40 @@ export interface DashboardSnapshot {
   serverVersion: string | null;
   availableMethods: string[];
   availableEvents: string[];
-  updateAvailable: { currentVersion: string; latestVersion: string; channel: string } | null;
+  updateAvailable: {
+    currentVersion: string;
+    latestVersion: string;
+    channel: string;
+  } | null;
   shutdown: { reason: string; restartExpectedMs?: number } | null;
+  /** Client-capability registry the gateway advertised (empty pre-2026.8 gateways). */
+  gatewayCapabilities: string[];
+  /** Per-method "requires scope X" hints from structured FORBIDDEN/MISSING_SCOPE errors. */
+  scopeHints: ScopeHint[];
+  /** Per-session agent progress cards from `progressCard.get`, keyed by sessionKey (agent-scoped, gateway ≥ 2026.9). */
+  progressCards: Record<string, ProgressCard>;
+  /** Session keys with an active agent run — `activeRunIds` snapshot/delta events (omission = no change, null = none). */
+  activeRunIds: string[];
+  /** Task ledger rows from `tasks.list` (read-only panel, gateway ≥ 2026.9). */
+  taskLedger: TaskLedgerEntry[] | null;
+  /** Usage/cost timeseries buckets from `sessions.usage.timeseries` (read-only panel). */
+  usageTimeseries: UsageTimeseriesEntry[] | null;
+  /** Node fleet rows from `node.list` (read-only panel). */
+  nodeFleet: NodeFleetEntry[] | null;
+  /** Gateway stability event feed from `diagnostics.stability` (read-only panel). */
+  stability: StabilityEntry[] | null;
+  /** Audit timeline rows from `audit.activity.list` (read-only panel). */
+  auditTimeline: AuditTimelineEntry[] | null;
+  /** Config schema map from `config.schema` (read-only private panel). */
+  configSchema: Record<string, ConfigSchemaEntry> | null;
+  /** Skill proposal queue from `skills.proposals.list` (read-only private panel). */
+  skillProposals: SkillProposalEntry[] | null;
+}
+
+/** A panel-visible hint that an RPC failed only for lack of operator scopes. */
+export interface ScopeHint {
+  method: string;
+  missingScopes: string[];
 }
 
 /** Listener for server-side events forwarded to browser SSE clients. @internal */
@@ -146,10 +224,12 @@ export class GatewayServerService {
   private snapshotListeners = new Set<SnapshotUpdatedListener>();
   private initialized = false;
   private initializeInFlight: Promise<void> | null = null;
+  /** Per-method scope hints captured during the current refresh cycle. */
+  private scopeHints: ScopeHint[] = [];
 
   /** Cached dashboard data. */
   private cache: DashboardSnapshot = {
-    connectionState: 'idle',
+    connectionState: "idle",
     lastUpdatedAt: null,
     lastSuccessfulSnapshotAt: null,
     stale: true,
@@ -179,33 +259,50 @@ export class GatewayServerService {
     availableEvents: [],
     updateAvailable: null,
     shutdown: null,
+    gatewayCapabilities: [],
+    scopeHints: [],
+    progressCards: {},
+    activeRunIds: [],
+    taskLedger: null,
+    usageTimeseries: null,
+    nodeFleet: null,
+    stability: null,
+    auditTimeline: null,
+    configSchema: null,
+    skillProposals: null,
   };
 
   constructor() {
-    const gatewayUrl = process.env.OPENCLAW_GATEWAY_WS_URL
-      ?? SERVICE_CONFIG.DEFAULT_GATEWAY_URL;
-    const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
-    const gatewayScopes = parseGatewayScopes(process.env.OPENCLAW_GATEWAY_SCOPES);
+    const gatewayUrl =
+      process.env.OPENCLAW_GATEWAY_WS_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_URL;
+    const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+    const gatewayScopes = parseGatewayScopes(
+      process.env.OPENCLAW_GATEWAY_SCOPES,
+    );
 
     this.client = new GatewayClient({
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? 'openclaw-control-ui',
-      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? 'webchat',
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? "openclaw-control-ui",
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? "webchat",
       clientVersion: CLIENT_VERSION,
-      clientDisplayName: 'ClawSprawl Dashboard (SSR)',
-      role: 'operator',
+      clientDisplayName: "ClawSprawl Dashboard (SSR)",
+      role: "operator",
       scopes: gatewayScopes,
       reconnect: true,
-      origin: process.env.OPENCLAW_GATEWAY_HTTP_URL ?? SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
+      origin:
+        process.env.OPENCLAW_GATEWAY_HTTP_URL ??
+        SERVICE_CONFIG.DEFAULT_GATEWAY_HTTP_URL,
       deviceId: process.env.CLAWSPRAWL_DEVICE_ID,
       devicePublicKey: process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY,
       devicePrivateKey: process.env.CLAWSPRAWL_DEVICE_PRIVATE_KEY,
       deviceToken: process.env.CLAWSPRAWL_DEVICE_TOKEN,
       // Advertise only capabilities the dashboard implements. `agent-kind` opts
-      // into the typed `agents.list` roster (system vs agent rows).
-      caps: ['agent-kind'],
+      // into the typed `agents.list` roster (system vs agent rows); tool-events /
+      // session-scoped-events / usage-refreshing describe how events and usage
+      // panels are consumed (see src/lib/gateway/capabilities.ts).
+      caps: [...DASHBOARD_CAPABILITIES],
       // Forward-compat: allow negotiating a newer wire protocol via env when a
       // future OpenClaw release bumps protocol v5, without a code change.
       maxProtocol: parseMaxProtocol(process.env.OPENCLAW_GATEWAY_MAX_PROTOCOL),
@@ -213,18 +310,22 @@ export class GatewayServerService {
 
     this.client.onStateChange((state) => {
       this.cache.connectionState = state;
-      if (state === 'reconnecting' || state === 'disconnected' || state === 'error') {
+      if (
+        state === "reconnecting" ||
+        state === "disconnected" ||
+        state === "error"
+      ) {
         this.cache.stale = true;
       }
-      if (state === 'reconnecting') {
+      if (state === "reconnecting") {
         this.reconnectCount += 1;
         this.cache.reconnectCount = this.reconnectCount;
       }
-      if (state === 'error') {
+      if (state === "error") {
         this.errorCount += 1;
         this.cache.errorCount = this.errorCount;
       }
-      if (state === 'connected') {
+      if (state === "connected") {
         this.reconnectCount = 0;
         this.cache.reconnectCount = 0;
         this.scheduleRefresh();
@@ -292,6 +393,7 @@ export class GatewayServerService {
 
       this.cache.availableMethods = helloOk.features?.methods ?? [];
       this.cache.availableEvents = helloOk.features?.events ?? [];
+      this.cache.gatewayCapabilities = helloOk.features?.capabilities ?? [];
 
       if (helloOk.snapshot?.updateAvailable) {
         this.cache.updateAvailable = helloOk.snapshot.updateAvailable;
@@ -307,17 +409,20 @@ export class GatewayServerService {
       // `backend` path). Without a paired device the dashboard connects but every
       // data RPC returns MISSING_SCOPE, so the dashboard renders empty.
       const msg = err instanceof Error ? err.message : String(err);
-      if (/CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
-          (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined && /MISSING_SCOPE.*operator\.read/i.test(msg))) {
+      if (
+        /CONTROL_UI_DEVICE_IDENTITY_REQUIRED|device identity/i.test(msg) ||
+        (process.env.CLAWSPRAWL_DEVICE_PUBLIC_KEY === undefined &&
+          /MISSING_SCOPE.*operator\.read/i.test(msg))
+      ) {
         console.warn(
-          '[clawsprawl:server] gateway requires a paired operator device for operator.read. ' +
-          'Generate a device identity with `npm run setup:device` and set ' +
-          'CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the ' +
-          'pending pairing on the gateway with `openclaw devices approve <id>`).',
+          "[clawsprawl:server] gateway requires a paired operator device for operator.read. " +
+            "Generate a device identity with `npm run setup:device` and set " +
+            "CLAWSPRAWL_DEVICE_PUBLIC_KEY / CLAWSPRAWL_DEVICE_PRIVATE_KEY (and approve the " +
+            "pending pairing on the gateway with `openclaw devices approve <id>`).",
         );
       }
-      console.warn('[clawsprawl:server] gateway bootstrap failed:', err);
-      this.cache.connectionState = 'error';
+      console.warn("[clawsprawl:server] gateway bootstrap failed:", err);
+      this.cache.connectionState = "error";
       this.initialized = false;
     }
   }
@@ -337,7 +442,10 @@ export class GatewayServerService {
    * @param sinceSeq - Sequence number after which to return events.
    * @returns An object containing the matching events and the latest sequence number.
    */
-  getEventsSince(sinceSeq: number): { events: (EventFrame & { seq: number })[]; latestSeq: number } {
+  getEventsSince(sinceSeq: number): {
+    events: (EventFrame & { seq: number })[];
+    latestSeq: number;
+  } {
     const events = this.eventBuffer
       .filter((e) => ((e as EventFrame & { seq: number }).seq ?? 0) > sinceSeq)
       .map((e) => e as EventFrame & { seq: number });
@@ -352,7 +460,9 @@ export class GatewayServerService {
    */
   onEvent(listener: ServerEventListener): () => void {
     this.eventListeners.add(listener);
-    return () => { this.eventListeners.delete(listener); };
+    return () => {
+      this.eventListeners.delete(listener);
+    };
   }
 
   /**
@@ -365,7 +475,9 @@ export class GatewayServerService {
    */
   onSnapshotUpdated(listener: SnapshotUpdatedListener): () => void {
     this.snapshotListeners.add(listener);
-    return () => { this.snapshotListeners.delete(listener); };
+    return () => {
+      this.snapshotListeners.delete(listener);
+    };
   }
 
   /** Current gateway connection state. */
@@ -377,26 +489,70 @@ export class GatewayServerService {
 
   /** Handle special gateway events that drive dedicated UI surfaces (banners, state). */
   private handleGatewayEvent(event: EventFrame): void {
-    if (event.event === 'update.available') {
+    if (event.event === "update.available") {
       const payload = event.payload as Record<string, unknown> | undefined;
-      if (payload && typeof payload.latestVersion === 'string' && typeof payload.currentVersion === 'string') {
+      if (
+        payload &&
+        typeof payload.latestVersion === "string" &&
+        typeof payload.currentVersion === "string"
+      ) {
         this.cache.updateAvailable = {
           currentVersion: payload.currentVersion,
           latestVersion: payload.latestVersion,
-          channel: typeof payload.channel === 'string' ? payload.channel : 'stable',
+          channel:
+            typeof payload.channel === "string" ? payload.channel : "stable",
         };
       }
-    } else if (event.event === 'shutdown') {
+    } else if (event.event === "shutdown") {
       const payload = event.payload as Record<string, unknown> | undefined;
       this.cache.shutdown = {
-        reason: typeof payload?.reason === 'string' ? payload.reason : 'shutdown',
-        ...(typeof payload?.restartExpectedMs === 'number' ? { restartExpectedMs: payload.restartExpectedMs } : {}),
+        reason:
+          typeof payload?.reason === "string" ? payload.reason : "shutdown",
+        ...(typeof payload?.restartExpectedMs === "number"
+          ? { restartExpectedMs: payload.restartExpectedMs }
+          : {}),
       };
-    } else if (event.event === 'health' || event.event === 'tick') {
+    } else if (event.event === "health" || event.event === "tick") {
       // Clear shutdown banner when gateway is alive again
       if (this.cache.shutdown) {
         this.cache.shutdown = null;
       }
+    } else if (event.event === "progressCard.changed") {
+      // Card payload shape varies across gateway builds (unverified) — do NOT
+      // patch the cache from the event payload. Invalidation-only: schedule a
+      // debounced re-fetch so the next refresh pulls the authoritative card
+      // via `progressCard.get`.
+      this.scheduleInvalidation();
+    } else if (event.event === "sessions.changed") {
+      this.applyActiveRunIdsDelta(event.payload);
+    }
+  }
+
+  /**
+   * Apply `activeRunIds` snapshot/delta semantics from a `sessions.changed`
+   * event payload into the cache.
+   *
+   * Semantics (docs: gateway/protocol/rpc-bootstrap-and-events.md):
+   * - field **omitted** → no change — the previous value is RETAINED (do not
+   *   clear; sessions.changed fires for reasons unrelated to runs),
+   * - explicit **`null`** → no active runs — clears the cache to `[]`,
+   * - **array** (of session keys) → replaces the cached active-run list.
+   *   Non-string entries are filtered out.
+   */
+  private applyActiveRunIdsDelta(payload: unknown): void {
+    if (typeof payload !== "object" || payload === null) return;
+    const record = payload as Record<string, unknown>;
+    // Omission = no change — only act when the field is present.
+    if (!("activeRunIds" in record)) return;
+    const value = record.activeRunIds;
+    if (value === null) {
+      this.cache.activeRunIds = [];
+      return;
+    }
+    if (Array.isArray(value)) {
+      this.cache.activeRunIds = value.filter(
+        (id): id is string => typeof id === "string",
+      );
     }
   }
 
@@ -409,7 +565,11 @@ export class GatewayServerService {
       this.eventBuffer = this.eventBuffer.slice(-SERVICE_CONFIG.MAX_EVENTS);
     }
     for (const listener of this.eventListeners) {
-      try { listener(stamped); } catch { /* swallow listener errors */ }
+      try {
+        listener(stamped);
+      } catch {
+        /* swallow listener errors */
+      }
     }
   }
 
@@ -439,7 +599,11 @@ export class GatewayServerService {
    * @param normalizer - Normalizer function to apply to the raw data.
    * @returns The normalized result, or `undefined` if `raw` is null or the normalizer throws.
    */
-  private safeNormalize<T>(label: string, raw: unknown, normalizer: (data: unknown) => T): T | undefined {
+  private safeNormalize<T>(
+    label: string,
+    raw: unknown,
+    normalizer: (data: unknown) => T,
+  ): T | undefined {
     if (!raw) return undefined;
     try {
       return normalizer(raw);
@@ -449,64 +613,219 @@ export class GatewayServerService {
     }
   }
 
+  /**
+   * Is an RPC method advertised by the connected gateway?
+   *
+   * Reads `hello-ok.features.methods` from the last successful handshake.
+   * When disconnected (no handshake yet) every method is treated as
+   * unavailable so calls resolve null immediately instead of erroring.
+   */
+  private canCall(method: string): boolean {
+    return this.client.availableMethods?.includes(method) ?? false;
+  }
+
+  /**
+   * Call an RPC only when the gateway advertises it; otherwise resolve null
+   * (identical to a failed call, so normalizers/panels treat it as absent).
+   * Gate on the advertised surface so panels degrade gracefully against
+   * gateways that lack a method instead of logging a per-refresh error.
+   *
+   * Structured FORBIDDEN/MISSING_SCOPE rejections (gateway ≥ 2026.9.3) are
+   * captured as per-method scope hints so panels can render "requires scope
+   * X" instead of an unexplained blank.
+   *
+   * @param method - RPC method name to invoke.
+   * @param params - Optional RPC params (e.g. `{ sessionKey }` for per-key
+   *   fetches like `progressCard.get`). Passed through verbatim.
+   * @returns The raw response payload, or null when unavailable/failed.
+   */
+  private callIfAvailable(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.canCall(method)) return Promise.resolve(null);
+    return this.client
+      .call(method, params)
+      .catch((err: Error & { code?: string; missingScopes?: string[] }) => {
+        if (
+          err.code === "FORBIDDEN" &&
+          Array.isArray(err.missingScopes) &&
+          err.missingScopes.length > 0
+        ) {
+          this.scopeHints = this.scopeHints.filter(
+            (hint) => hint.method !== method,
+          );
+          this.scopeHints.push({
+            method,
+            missingScopes: [...err.missingScopes],
+          });
+        }
+        return null;
+      });
+  }
+
   /** Notify all snapshot listeners that a fresh snapshot is available. */
   private notifySnapshotUpdated(): void {
     for (const listener of this.snapshotListeners) {
-      try { listener(); } catch { /* swallow listener errors */ }
+      try {
+        listener();
+      } catch {
+        /* swallow listener errors */
+      }
     }
+  }
+
+  /**
+   * Pick the top-N session keys for per-key fetches (e.g. progress cards).
+   *
+   * Ordered by most recent session-detail activity (`lastActivityAt`) when
+   * session details are available; falls back to the first N `sessions.list`
+   * keys (gateway order) otherwise.
+   */
+  private topSessionKeys(limit: number): string[] {
+    const details = this.cache.sessionDetails ?? [];
+    if (details.length > 0) {
+      return [...details]
+        .sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
+        .slice(0, limit)
+        .map((d) => d.key);
+    }
+    return this.cache.sessions.slice(0, limit).map((session) => session.key);
   }
 
   /** Fetch all dashboard data via RPC calls. */
   private async refreshData(): Promise<void> {
-    if (this.refreshInFlight || this.client.connectionState !== 'connected') return;
+    if (this.refreshInFlight || this.client.connectionState !== "connected")
+      return;
 
     this.refreshInFlight = true;
 
     try {
-      // Parallel RPC fetches — all data comes from the gateway WebSocket
-      const [status, agents, sessions, cronJobs, cronRuns, models, health, presence, usageCost, usageStatus, toolsCatalog, skillsStatus, channelsStatus, cronScheduler, memoryStatus, configData, fileStatus] = await Promise.all([
-        this.client.call('status').catch(() => null),
-        this.client.call('agents.list').catch(() => null),
-        this.client.call('sessions.list').catch(() => null),
-        this.client.call('cron.list').catch(() => null),
-        this.client.call('cron.runs').catch(() => null),
-        this.client.call('models.list').catch(() => null),
-        this.client.call('health').catch(() => null),
-        this.client.call('system-presence').catch(() => null),
-        this.client.call('usage.cost').catch(() => null),
-        this.client.call('usage.status').catch(() => null),
-        this.client.call('tools.catalog').catch(() => null),
-        this.client.call('skills.status').catch(() => null),
-        this.client.call('channels.status').catch(() => null),
-        this.client.call('cron.status').catch(() => null),
-        this.client.call('doctor.memory.status').catch(() => null),
-        this.client.call('config.get').catch(() => null),
-        this.client.call('agents.files.list').catch(() => null),
+      // Parallel RPC fetches — all data comes from the gateway WebSocket.
+      // callIfAvailable gates on the gateway-advertised method surface so a
+      // gateway lacking a method yields null (absent panel data) instead of
+      // an error log every refresh.
+      const [
+        status,
+        agents,
+        sessions,
+        cronJobs,
+        cronRuns,
+        models,
+        health,
+        presence,
+        usageCost,
+        usageStatus,
+        toolsCatalog,
+        skillsStatus,
+        channelsStatus,
+        cronScheduler,
+        memoryStatus,
+        configData,
+        fileStatus,
+      ] = await Promise.all([
+        this.callIfAvailable("status"),
+        this.callIfAvailable("agents.list"),
+        this.callIfAvailable("sessions.list"),
+        this.callIfAvailable("cron.list"),
+        this.callIfAvailable("cron.runs"),
+        this.callIfAvailable("models.list"),
+        this.callIfAvailable("health"),
+        this.callIfAvailable("system-presence"),
+        this.callIfAvailable("usage.cost"),
+        this.callIfAvailable("usage.status"),
+        this.callIfAvailable("tools.catalog"),
+        this.callIfAvailable("skills.status"),
+        this.callIfAvailable("channels.status"),
+        this.callIfAvailable("cron.status"),
+        this.callIfAvailable("doctor.memory.status"),
+        this.callIfAvailable("config.get"),
+        this.callIfAvailable("agents.files.list"),
       ]);
 
       // Each normalizer is wrapped individually so one failure cannot block
       // others from caching their results. This is critical for resilience
       // against unexpected gateway response shapes.
-      const nStatus = this.safeNormalize('status', status, (d) => normalizeStatus(d as Record<string, unknown>));
-      const nAgents = this.safeNormalize('agents', agents, normalizeAgents);
-      const nSessions = this.safeNormalize('sessions', sessions, normalizeSessions);
-      const nCronJobs = this.safeNormalize('cronJobs', cronJobs, normalizeCronJobs);
-      const nCronRuns = this.safeNormalize('cronRuns', cronRuns, normalizeCronRuns);
-      const nModels = this.safeNormalize('models', models, normalizeModels);
-      const nHealth = this.safeNormalize('health', health, (d) => normalizeHealth(d as Record<string, unknown>));
-      const nPresence = this.safeNormalize('presence', presence, normalizePresence);
-      const nUsageCost = this.safeNormalize('usageCost', usageCost, normalizeUsageCost);
-      const nUsageStatus = this.safeNormalize('usageStatus', usageStatus, normalizeUsageStatus);
-      const nToolsCatalog = this.safeNormalize('toolsCatalog', toolsCatalog, normalizeToolsCatalog);
-      const nSkillsStatus = this.safeNormalize('skillsStatus', skillsStatus, normalizeSkillsStatus);
-      const nChannelsStatus = this.safeNormalize('channelsStatus', channelsStatus, normalizeChannelsStatus);
-      const nCronScheduler = this.safeNormalize('cronScheduler', cronScheduler, normalizeCronScheduler);
-      const nMemoryStatus = this.safeNormalize('memoryStatus', memoryStatus, normalizeMemoryStatus);
-      const nConfigData = this.safeNormalize('configData', configData, normalizeConfigData);
-      const nFileStatus = this.safeNormalize('fileStatus', fileStatus, normalizeFileStatus);
+      const nStatus = this.safeNormalize("status", status, (d) =>
+        normalizeStatus(d as Record<string, unknown>),
+      );
+      const nAgents = this.safeNormalize("agents", agents, normalizeAgents);
+      const nSessions = this.safeNormalize(
+        "sessions",
+        sessions,
+        normalizeSessions,
+      );
+      const nCronJobs = this.safeNormalize(
+        "cronJobs",
+        cronJobs,
+        normalizeCronJobs,
+      );
+      const nCronRuns = this.safeNormalize(
+        "cronRuns",
+        cronRuns,
+        normalizeCronRuns,
+      );
+      const nModels = this.safeNormalize("models", models, normalizeModels);
+      const nHealth = this.safeNormalize("health", health, (d) =>
+        normalizeHealth(d as Record<string, unknown>),
+      );
+      const nPresence = this.safeNormalize(
+        "presence",
+        presence,
+        normalizePresence,
+      );
+      const nUsageCost = this.safeNormalize(
+        "usageCost",
+        usageCost,
+        normalizeUsageCost,
+      );
+      const nUsageStatus = this.safeNormalize(
+        "usageStatus",
+        usageStatus,
+        normalizeUsageStatus,
+      );
+      const nToolsCatalog = this.safeNormalize(
+        "toolsCatalog",
+        toolsCatalog,
+        normalizeToolsCatalog,
+      );
+      const nSkillsStatus = this.safeNormalize(
+        "skillsStatus",
+        skillsStatus,
+        normalizeSkillsStatus,
+      );
+      const nChannelsStatus = this.safeNormalize(
+        "channelsStatus",
+        channelsStatus,
+        normalizeChannelsStatus,
+      );
+      const nCronScheduler = this.safeNormalize(
+        "cronScheduler",
+        cronScheduler,
+        normalizeCronScheduler,
+      );
+      const nMemoryStatus = this.safeNormalize(
+        "memoryStatus",
+        memoryStatus,
+        normalizeMemoryStatus,
+      );
+      const nConfigData = this.safeNormalize(
+        "configData",
+        configData,
+        normalizeConfigData,
+      );
+      const nFileStatus = this.safeNormalize(
+        "fileStatus",
+        fileStatus,
+        normalizeFileStatus,
+      );
 
       // Session details derived from sessions.list — no separate RPC needed
-      const nSessionDetails = this.safeNormalize('sessionDetails', sessions, normalizeSessionDetails);
+      const nSessionDetails = this.safeNormalize(
+        "sessionDetails",
+        sessions,
+        normalizeSessionDetails,
+      );
 
       if (nStatus !== undefined) this.cache.status = nStatus;
       if (nAgents !== undefined) this.cache.agents = nAgents;
@@ -514,7 +833,8 @@ export class GatewayServerService {
         this.cache.sessions = nSessions;
         this.cache.sessionsByAgent = countSessionsByAgent(nSessions);
       }
-      if (nSessionDetails !== undefined) this.cache.sessionDetails = nSessionDetails;
+      if (nSessionDetails !== undefined)
+        this.cache.sessionDetails = nSessionDetails;
       if (nCronJobs !== undefined) this.cache.cronJobs = nCronJobs;
       if (nCronRuns !== undefined) this.cache.cronRuns = nCronRuns;
       if (nModels !== undefined) this.cache.models = nModels;
@@ -524,8 +844,10 @@ export class GatewayServerService {
       if (nUsageStatus !== undefined) this.cache.usageStatus = nUsageStatus;
       if (nToolsCatalog !== undefined) this.cache.toolsCatalog = nToolsCatalog;
       if (nSkillsStatus !== undefined) this.cache.skillsStatus = nSkillsStatus;
-      if (nChannelsStatus !== undefined) this.cache.channelsStatus = nChannelsStatus;
-      if (nCronScheduler !== undefined) this.cache.cronScheduler = nCronScheduler;
+      if (nChannelsStatus !== undefined)
+        this.cache.channelsStatus = nChannelsStatus;
+      if (nCronScheduler !== undefined)
+        this.cache.cronScheduler = nCronScheduler;
       if (nMemoryStatus !== undefined) this.cache.memoryStatus = nMemoryStatus;
       if (nConfigData !== undefined) this.cache.configData = nConfigData;
       if (nFileStatus !== undefined) this.cache.fileStatus = nFileStatus;
@@ -534,9 +856,110 @@ export class GatewayServerService {
       this.cache.lastUpdatedAt = now;
       this.cache.lastSuccessfulSnapshotAt = now;
       this.cache.stale = false;
+      // Publish hints captured during THIS refresh, then reset for the next —
+      // a hint that stops appearing means the scope issue was resolved.
+      this.cache.scopeHints = [...this.scopeHints];
+      this.scopeHints = [];
+
+      // --- Progress cards (agent-scoped, gateway ≥ 2026.9) ---
+      // Gate on BOTH the advertised capability and the RPC method, then fetch
+      // cards for the top N most-recently-active session keys in parallel.
+      // Absent capability/method (or per-key failure) leaves the previous
+      // cached cards untouched — panels degrade to stale-then-absent.
+      const capabilities = this.client.helloOk?.features?.capabilities;
+      if (
+        hasCapability(capabilities, PROGRESS_CARD_CAPABILITY) &&
+        hasMethod(this.client.helloOk, PROGRESS_CARD_METHOD)
+      ) {
+        const sessionKeys = this.topSessionKeys(PROGRESS_CARD_FETCH_LIMIT);
+        const fetched = await Promise.all(
+          sessionKeys.map(async (sessionKey) => {
+            const raw = await this.callIfAvailable(PROGRESS_CARD_METHOD, {
+              sessionKey,
+            });
+            return this.safeNormalize("progressCard", raw, (d) =>
+              normalizeProgressCard(d, sessionKey),
+            );
+          }),
+        );
+        const cards: Record<string, ProgressCard> = {};
+        for (const card of fetched) {
+          if (card) cards[card.sessionKey] = card;
+        }
+        this.cache.progressCards = cards;
+      }
+
+      // --- Phase 3 read-only panels (gateway ≥ 2026.9) ---
+      // Gated individually by callIfAvailable on the advertised method
+      // surface; absent methods yield null → panels render empty state.
+      const [
+        taskLedger,
+        usageTimeseries,
+        nodeFleet,
+        stability,
+        auditTimeline,
+        configSchema,
+        skillProposals,
+      ] = await Promise.all([
+        this.callIfAvailable("tasks.list"),
+        this.callIfAvailable("sessions.usage.timeseries"),
+        this.callIfAvailable("node.list"),
+        this.callIfAvailable("diagnostics.stability"),
+        this.callIfAvailable("audit.activity.list"),
+        this.callIfAvailable("config.schema"),
+        this.callIfAvailable("skills.proposals.list"),
+      ]);
+
+      const nTaskLedger = this.safeNormalize(
+        "taskLedger",
+        taskLedger,
+        normalizeTaskLedger,
+      );
+      const nUsageTimeseries = this.safeNormalize(
+        "usageTimeseries",
+        usageTimeseries,
+        normalizeUsageTimeseries,
+      );
+      const nNodeFleet = this.safeNormalize(
+        "nodeFleet",
+        nodeFleet,
+        normalizeNodeFleet,
+      );
+      const nStability = this.safeNormalize(
+        "stability",
+        stability,
+        normalizeStability,
+      );
+      const nAuditTimeline = this.safeNormalize(
+        "auditTimeline",
+        auditTimeline,
+        normalizeAuditTimeline,
+      );
+      const nConfigSchema = this.safeNormalize(
+        "configSchema",
+        configSchema,
+        normalizeConfigSchema,
+      );
+      const nSkillProposals = this.safeNormalize(
+        "skillProposals",
+        skillProposals,
+        normalizeSkillProposals,
+      );
+
+      if (nTaskLedger !== undefined) this.cache.taskLedger = nTaskLedger;
+      if (nUsageTimeseries !== undefined)
+        this.cache.usageTimeseries = nUsageTimeseries;
+      if (nNodeFleet !== undefined) this.cache.nodeFleet = nNodeFleet;
+      if (nStability !== undefined) this.cache.stability = nStability;
+      if (nAuditTimeline !== undefined)
+        this.cache.auditTimeline = nAuditTimeline;
+      if (nConfigSchema !== undefined) this.cache.configSchema = nConfigSchema;
+      if (nSkillProposals !== undefined)
+        this.cache.skillProposals = nSkillProposals;
+
       this.notifySnapshotUpdated();
     } catch (err) {
-      console.warn('[clawsprawl:server] data refresh failed:', err);
+      console.warn("[clawsprawl:server] data refresh failed:", err);
       this.cache.stale = true;
     } finally {
       this.refreshInFlight = false;
