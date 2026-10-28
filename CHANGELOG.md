@@ -164,7 +164,7 @@ _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sw
 - All themes respect the dark-mode-only policy and map to existing `--color-terminal-*` tokens.
 - Save standard development loop model to `AGENTS.md`.
 
-## [0.42.69] - 2026-04-19
+## [0.42.69] - 2026-04-28
 
 ### Security
 
@@ -294,7 +294,7 @@ _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sw
 - Strict QA gates (`npm run qa:strict`) and e2e validation are passing on the post-release hardening branch.
 - Cross-document references were normalized to use real clickable links and canonical doc ownership.
 
-## [0.42.0] - 2026-04-12
+## [0.42.0] - 2026-04-14
 
 ### Added
 
