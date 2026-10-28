@@ -1,5 +1,7 @@
 # ClawSprawl → OpenClaw Gateway API Surface Inventory
 
+> **Dated snapshot (2026-09-14).** Findings reflect the commit and version cited below and are superseded by `v0.67.0`. Kept as provenance, not as current documentation.
+
 **Subject:** local checkout `~/null-arbitrage/clawsprawl` @ commit `93d51a1` (v0.44.0)
 **Purpose:** map every OpenClaw gateway API touchpoint the dashboard consumes, so gateway API changes can be diffed against this list.
 **Method:** READ-ONLY static audit of `src/`, `tests/`, `scripts/`, `docs/`, config files. No repo files were modified.

@@ -2,7 +2,7 @@
 
 This directory contains operational, architectural, and extension documentation for the ClawSprawl dashboard.
 
-Last reviewed for release baseline: `v0.42.76` (2026-09-14, OpenClaw 2026.9 catch-up).
+Last reviewed for release baseline: `v0.67.0` (2026-10-28, OpenClaw 2026.9 catch-up + audit gate restoration).
 
 ## Start Here
 

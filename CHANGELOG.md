@@ -4,13 +4,65 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
-## [0.42.76 «Recatch»] - 2026-09-14
+## [0.67.0 «The Unfreeze»] - 2026-10-28
 
-_OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8/9 protocol surfaces, and automate the dependency pipeline. Version note: per maintainer direction this release continues the 0.42.x baseline lineage (a decrease from 0.44.0); all 0.44.0 content remains included._
+_First properly tagged release since 0.42.69. Two things were true at once: the OpenClaw 2026.9 migration was finished and passing, but `main` had been unable to run CI since 2026-09-14. This release breaks that deadlock, retires the entire Dependabot backlog in a single merge, and restores the production audit gate to zero._
+
+Version note: `0.43.0` and `0.44.0` were documented here but **never tagged or released**; `0.42.76` was tagged on 2026-09-14 and released on 2026-10-28 under that number, which left the version history inconsistent in both directions. `0.67.0` is the honest cut: it supersedes every untagged entry below, and the 0.42.76 notes are retained as the interim record of what landed between 0.42.69 and this release.
+
+### Fixed — Dependency Gate Restoration
+
+- **Restored the production audit gate.** `npm audit --omit=dev --audit-level=moderate` passes with **0 vulnerabilities**.
+- **Extended the security `overrides` block** with same-major fix floors: `devalue` ^5.9.4, `http-cache-semantics` ^4.3.0, `sharp` ^0.35.5, `smol-toml` ^1.9.1, `source-map-js` ^1.2.2, `undici` ^8.12.3, `vite` ^8.3.5, `zod` ^4.6.7.
+- **Chose overrides over a blanket `npm audit fix`.** The blanket fix also clears the tree, but drags `astro` 7.3.2 → 7.4.2 and 88 unrelated production-tree version changes (rolldown, shiki, sharp-libvips, compiler bindings) into a security fix — 1432 lockfile lines vs 478. The one remaining `astro` advisory (GHSA-mpr7-6m5w-76rw) is **low**, below the gate's `moderate` threshold, and is left to its own Dependabot PR.
+- **Fixed a self-vulnerable override.** `fast-uri` had been pinned to `3.1.7`, which sits *inside* its own vulnerable range `3.0.0 - 3.1.8`. A prior entry below described this as "moved off the vulnerable range top" — it had not been. Now `3.1.9` (still inside `ajv`'s `^3.0.1` peer).
+- **Advisory full-tree audit is green too**, not merely non-blocking: added `brace-expansion` ^5.0.12 alongside the `fast-uri` correction. `dependency-audit` reports `0 vulnerabilities at/above "moderate"`.
+- Retired nine Dependabot PRs (#100, #113, #117, #118, #119, #121, #122, #123, #124) by folding them into the migration branch rather than rebasing them one at a time.
+
+### Added — OpenClaw 2026.9 Protocol Adoption
+
+- Capability registry (`src/lib/gateway/capabilities.ts`): typed `hasCapability` / `advertisedMethods` / `hasMethod` helpers over the hello-ok surface.
+- Graceful method gating: `callIfAvailable`/`canCall` gate every RPC on the gateway-advertised surface; absent methods yield absent panel data instead of per-refresh error logs.
+- Structured scope hints: `FORBIDDEN`/`MISSING_SCOPE` rejections captured per method so panels can render "requires scope X".
+- Progress cards and active runs: `progressCard.get` capability-gated on `progress-card-agent-scope-v1`; `progressCard.changed` treated as invalidation-only; `activeRunIds` snapshot/delta semantics from `sessions.changed`.
+- Seven read-only fleet panels: Task Ledger, Usage Timeseries, Node Fleet, Gateway Stability, Audit Timeline, Config Schema, Skill Proposals — all method-gated, all public-view redacted.
+- Advertises `agent-kind`, `tool-events`, `session-scoped-events`, `usage-refreshing`. Approval and UI-command surfaces are deliberately not claimed; the dashboard is read-only.
+
+### Fixed — Gateway Handshake / Auth Hardening
+
+- Device-proof signatures use the gateway-issued `connect.challenge` timestamp (local clock only as fallback); local-clock signatures fail under clock skew on v2026.8.1+ gateways.
+- Pre-WebSocket handshake failures classified: 5xx upgrades and connection-refused reject with `retryable: true` + `code: 'GATEWAY_UNAVAILABLE'`; 4xx auth/misconfig stays non-retryable.
+- Non-string WebSocket frames counted (`client.nonStringFrameCount`) and warned once instead of silently dropped.
+
+### Changed — Runtime
+
+- **Node toolchain aligned with the gateway floor:** `.nvmrc` 22.13.0 → 26.8.2, `engines.node` >= 26.1.0 (OpenClaw v2026.9.3+ requires Node 24.16+/26.1+; older builds risk SQLite text truncation). The pinned chainguard digest already ships 26.8.2.
+
+### Changed — Docs & Release Hygiene
+
+- `README.md`: correct the version badge (was stuck at `0.44.0`, a version never released) and the Node badge (was `22.12+`, below the actual floor).
+- `VERSIONING.md`: add `0.42.76` and `0.67.0` to the public baseline list; note that `0.43.0`/`0.44.0` were never tagged.
+- `docs/README.md`: re-date the reviewed baseline from the tag date to the actual release date.
+- `docs/research/*`: mark as dated snapshots superseded by this release, rather than rewriting historical findings.
+
+### Verified
+
+- `qa:strict` (lint + typecheck + unit coverage + docs coverage + build) — pass
+- `test:e2e` — pass
+- Unit tests: 543 passed (17 files)
+- Production audit **0** · full-tree audit **0**
+- Coverage: 92.66% statements, 82.22% branches, 95.86% functions, 94.10% lines
+- Docs coverage 100% (16/16 required, 4/4 informational)
+
+## [0.42.76 «Recatch»] - 2026-10-28
+
+> **Interim tag, superseded by 0.67.0.** Tagged on 2026-09-14 (before the dependency work existed) and released on 2026-10-28. Retained as the record of what landed between 0.42.69 and 0.67.0.
+
+_OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8/9 protocol surfaces, and automate the dependency pipeline._
 
 ### Fixed — Dependency Repair (post mass-merge of 2026-09-14)
 - Repair `npm ci` ERESOLVE on main: `typescript` ^7.0.2 → ^6.0.3 (`@astrojs/check@0.9.10` — latest — peers `^5||^6`; TS7 support lands upstream later). Verified 479/479 tests + clean audits on the fix before the automation work stacked on it.
-- Move the `fast-uri` override off the vulnerable range top: `3.1.5` → `3.1.7` (SSRF/host-confusion advisories GHSA-w27v-family; `ajv` accepts `^3.0.1`).
+- Pin `fast-uri` 3.1.5 → 3.1.7 (SSRF/host-confusion advisories GHSA-w27v-family; `ajv` accepts `^3.0.1`). **Superseded in 0.67.0** — 3.1.7 turned out to sit *inside* the vulnerable range `3.0.0-3.1.8`, so the pin is now 3.1.9.
 - Reconcile stale `allowScripts` (`sharp@0.34.5` → `0.35.4`, matching the merged #90 bump).
 - CI checks that were skipped behind `needs: quality` (e2e, container-build) now always run and report — a skipped check satisfies a required check, which is how the TS7 breakage reached `main` unnoticed.
 - Full-tree (prod+dev) audit demoted from blocking gate to advisory CI job (`dependency-audit`, `continue-on-error`); the required gate is now production-only at `moderate+` (in-suite test + `security.yml`/`publish-gpr.yml`). One transitive dev advisory can no longer wall off every PR.
@@ -18,7 +70,6 @@ _OpenClaw 2026.9 catch-up: repair the post-mass-merge breakage, adopt the 2026.8
 - Restore the `npm audit --omit=dev --audit-level=moderate` gate, which had been failing on `main` since this release and blocking every open pull request — including the Dependabot PRs that carried the fixes themselves.
 - Extend the security `overrides` block with same-major fix floors for the production-tree advisories: `devalue` ^5.9.4, `http-cache-semantics` ^4.3.0, `sharp` ^0.35.5, `smol-toml` ^1.9.1, `source-map-js` ^1.2.2, `undici` ^8.12.3, `vite` ^8.3.5, `zod` ^4.6.7. Overrides were chosen over a blanket `npm audit fix` to avoid pulling `astro` 7.3.2 → 7.4.2 and 88 unrelated production-tree changes into a security fix. The remaining `astro` advisory (GHSA-mpr7-6m5w-76rw) is `low`, below the gate's `moderate` threshold.
 - Keep the advisory full-tree audit green as well: `fast-uri` override `3.1.7` → `3.1.9` (3.1.7 sat *inside* its own vulnerable `3.0.0-3.1.8` range) and `brace-expansion` ^5.0.12.
-
 ### Fixed — Gateway Handshake/Auth (OpenClaw v2026.8.1 contract)
 - Device-proof signatures now use the **gateway-issued `connect.challenge` timestamp** as `signedAt` (falls back to local clock only for pre-challenge servers). Local-clock signatures fail on v2026.8.1+ gateways under clock skew (upstream #116679).
 - Pre-WebSocket handshake failures are classified: HTTP 5xx upgrades / connection-refused reject with `retryable: true` + `code: 'GATEWAY_UNAVAILABLE'`; 4xx auth/misconfig stays non-retryable (upstream #141451).
