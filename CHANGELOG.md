@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed — Dependencies & Security
+- Restore the `npm audit --omit=dev --audit-level=moderate` gate, which had been failing on `main` since 2026-09-14 and blocking every open pull request (including the Dependabot PRs that carried the fixes themselves).
+- Extend the security `overrides` block with same-major fix floors for 7 production-tree advisories: `devalue` ^5.9.4, `http-cache-semantics` ^4.3.0, `sharp` ^0.35.5, `smol-toml` ^1.9.1, `source-map-js` ^1.2.2, `undici` ^8.12.3, `vite` ^8.3.5, `zod` ^4.6.7.
+- Overrides were chosen over a blanket `npm audit fix` to avoid pulling `astro` 7.3.2 → 7.4.2 and 88 unrelated production-tree version changes into a security fix. The remaining `astro` advisory (GHSA-mpr7-6m5w-76rw) is `low`, below the gate's `moderate` threshold, and is addressed by the Dependabot `astro` update.
+
 ## [0.44.0 «Uplink»] - 2026-08-02
 
 _Catch up the uplink; lock down the supply chain. Astro 7 / Vite 8 dependency sweep, full-tree security audit enforcement, and an OpenClaw v2026.6/7 protocol-robustness catch-up._
