@@ -284,8 +284,17 @@ export class GatewayServerService {
       url: gatewayUrl,
       fallbackUrl: SERVICE_CONFIG.FALLBACK_GATEWAY_URL,
       token: gatewayToken || undefined,
-      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? "openclaw-control-ui",
-      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? "webchat",
+      // Must be one of the gateway's canonical client ids (`gateway-client`,
+      // `webchat`, `cli`, ...). Do NOT default to `openclaw-control-ui`: that
+      // identity makes the gateway apply its Control UI build-mismatch guard
+      // (resolveControlUiBuildMismatch), which rejects any client whose
+      // buildId differs from the running gateway build. ClawSprawl is an
+      // external SSR integration and has no gateway buildId, so that guard can
+      // never pass — every connection fails with PROTOCOL_MISMATCH /
+      // "Control UI updated; reload this page". Confirmed against gateway
+      // 2026.10.7. `gateway-client` + mode `backend` is the correct identity.
+      clientId: process.env.CLAWSPRAWL_CLIENT_ID ?? "gateway-client",
+      clientMode: process.env.CLAWSPRAWL_CLIENT_MODE ?? "backend",
       clientVersion: CLIENT_VERSION,
       clientDisplayName: "ClawSprawl Dashboard (SSR)",
       role: "operator",

@@ -23,7 +23,14 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4321',
     port: 4321,
-    reuseExistingServer: !process.env.CI,
+    // Reuse is a convenience for local test runs, but it silently breaks the
+    // docs:screenshots capture: that script runs two passes with different
+    // CLAWSPRAWL_MODE values, and a reused server keeps whichever mode it was
+    // started with. Observed 2026-09-14 — the `public` pass captured an
+    // `insecure` (private-unlocked) server, so every stored screenshot said
+    // "private view unlocked" and the public-locked image leaked session
+    // counts. Never reuse when capturing screenshots.
+    reuseExistingServer: !process.env.CI && !process.env.DOCS_SCREENSHOTS,
     timeout: 120000,
   },
 });
