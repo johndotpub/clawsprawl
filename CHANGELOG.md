@@ -45,6 +45,11 @@ Version note: `0.43.0` and `0.44.0` were documented here but **never tagged or r
 - `docs/README.md`: re-date the reviewed baseline from the tag date to the actual release date.
 - `docs/research/*`: mark as dated snapshots superseded by this release, rather than rewriting historical findings.
 
+### Changed — Toolchain
+
+- `@typescript-eslint/eslint-plugin` and `@typescript-eslint/parser` 8.72.0 → 8.72.1 (patch).
+- `typescript` stays at ^6.0.3. TS 7.0.2 is still ecosystem-blocked: `@astrojs/check` peers `^5 || ^6` and `@typescript-eslint` peers `<6.1.0`.
+
 ### Verified
 
 - `qa:strict` (lint + typecheck + unit coverage + docs coverage + build) — pass
